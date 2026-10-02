@@ -1,0 +1,553 @@
+import 'dart:io';
+
+import 'package:file_selector/file_selector.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../core/theme.dart';
+import '../models/blueprint.dart';
+import '../models/node_types.dart';
+import '../state/providers.dart';
+import 'common.dart';
+
+/// 首页：功能入口 + 脚本管理
+class HomePage extends ConsumerWidget {
+  const HomePage({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final automation = ref.watch(automationProvider);
+    return Scaffold(
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 900),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 标题区
+                const Text(
+                  '蓝图连点器',
+                  style: TextStyle(
+                    fontSize: 34,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.peacock,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Windows 自动化 · 蓝图工作流',
+                  style: TextStyle(fontSize: 15, color: AppColors.inkSecondary),
+                ),
+                // 平台不支持提示
+                if (!automation.isSupported) ...[
+                  const SizedBox(height: 16),
+                  const _UnsupportedBanner(),
+                ],
+                const SizedBox(height: 20),
+                // 功能入口卡片
+                Wrap(
+                  spacing: 14,
+                  runSpacing: 14,
+                  children: const [
+                    _EntryCard(
+                      title: '快捷连点',
+                      desc: '设定频率与点位，立即开始连点',
+                      icon: Icons.touch_app_rounded,
+                      color: NodeCategory.interaction,
+                      route: '/clicker',
+                    ),
+                    _EntryCard(
+                      title: '蓝图编辑器',
+                      desc: '拖拽节点搭建自动化工作流',
+                      icon: Icons.account_tree_outlined,
+                      color: NodeCategory.logic,
+                      route: '/editor',
+                    ),
+                    _EntryCard(
+                      title: '录制回放',
+                      desc: '录制鼠标操作，回放或转为脚本',
+                      icon: Icons.fiber_manual_record_rounded,
+                      color: NodeCategory.media,
+                      route: '/recordings',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 28),
+                // 我的脚本
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        '我的脚本',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => _importScript(context, ref),
+                      icon: const Icon(Icons.upload_file_rounded, size: 18),
+                      label: const Text('导入'),
+                    ),
+                    const SizedBox(width: 10),
+                    FilledButton.icon(
+                      onPressed: () => _createScript(context, ref),
+                      icon: const Icon(Icons.add_rounded, size: 18),
+                      label: const Text('新建'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const _ScriptList(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 新建脚本：输入名称 → 创建含开始节点的脚本 → 保存 → 进编辑器
+  Future<void> _createScript(BuildContext context, WidgetRef ref) async {
+    final name = await _promptName(context, title: '新建脚本', hint: '输入脚本名称');
+    if (name == null || !context.mounted) return;
+    final s = BlueprintScript(name: name);
+    final notifier = ref.read(currentScriptProvider.notifier);
+    notifier.open(s);
+    notifier.addNode(BPNode(id: 'n_start', type: 'start', x: 80, y: 80));
+    await ref.read(scriptStorageProvider).save(s);
+    await ref.read(scriptListProvider.notifier).refresh();
+    if (!context.mounted) return;
+    ref.read(appNavProvider.notifier).go(AppTab.editor);
+  }
+
+  /// 导入脚本 JSON 文件
+  Future<void> _importScript(BuildContext context, WidgetRef ref) async {
+    final f = await openFile();
+    if (f == null || !context.mounted) return;
+    try {
+      final text = await f.readAsString();
+      final fallback = f.name.replaceAll(RegExp(r'\.bpc\.json$|\.json$'), '');
+      await ref
+          .read(scriptStorageProvider)
+          .importFromString(text, fallbackName: fallback);
+      await ref.read(scriptListProvider.notifier).refresh();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('导入成功')));
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('导入失败：文件不是有效的脚本 JSON')));
+    }
+  }
+
+  /// 通用名称输入对话框
+  Future<String?> _promptName(
+    BuildContext context, {
+    required String title,
+    String? initial,
+    String? hint,
+  }) async {
+    final controller = TextEditingController(text: initial ?? '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(hintText: hint, labelText: '名称'),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return (result == null || result.isEmpty) ? null : result;
+  }
+}
+
+/// 平台不支持自动化时的警示条
+class _UnsupportedBanner extends StatelessWidget {
+  const _UnsupportedBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.moonWhite,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.outline),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline_rounded,
+              size: 18, color: AppColors.inkSecondary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '当前平台暂不支持自动化执行，可正常编辑脚本',
+              style: TextStyle(fontSize: 13, color: AppColors.inkSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 功能入口卡片
+class _EntryCard extends ConsumerWidget {
+  final String title;
+  final String desc;
+  final IconData icon;
+  final NodeCategory color;
+  final String route;
+
+  const _EntryCard({
+    required this.title,
+    required this.desc,
+    required this.icon,
+    required this.color,
+    required this.route,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return SizedBox(
+      width: 272,
+      child: Material(
+        color: AppColors.moonWhite,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => ref.read(appNavProvider.notifier).go(
+                switch (route) {
+                  '/clicker' => AppTab.clicker,
+                  '/editor' => AppTab.editor,
+                  '/recordings' => AppTab.recordings,
+                  _ => AppTab.home,
+                },
+              ),
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: color.color.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, color: color.color, size: 24),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        desc,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.inkSecondary,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right_rounded,
+                    color: AppColors.inkSecondary),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 脚本列表（含加载/错误/空态）
+class _ScriptList extends ConsumerWidget {
+  const _ScriptList();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final list = ref.watch(scriptListProvider);
+    return list.when(
+      loading: () => const Padding(
+        padding: EdgeInsets.all(40),
+        child: Center(child: CircularProgressIndicator()),
+      ),
+      error: (e, _) => SectionCard(
+        title: '加载失败',
+        icon: Icons.error_outline_rounded,
+        child: Column(
+          children: [
+            Text('$e', style: TextStyle(color: AppColors.danger, fontSize: 13)),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () => ref.read(scriptListProvider.notifier).refresh(),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('重试'),
+            ),
+          ],
+        ),
+      ),
+      data: (scripts) {
+        if (scripts.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              color: AppColors.moonWhite,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                Icon(Icons.note_add_rounded,
+                    size: 40, color: AppColors.inkSecondary),
+                const SizedBox(height: 10),
+                Text(
+                  '还没有脚本，点击右上角「新建」创建第一个蓝图，或导入 .bpc.json 文件',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.inkSecondary, fontSize: 13),
+                ),
+              ],
+            ),
+          );
+        }
+        return SectionCard(
+          title: '共 ${scripts.length} 个脚本',
+          icon: Icons.folder_open_rounded,
+          child: Column(
+            children: [
+              for (final s in scripts)
+                _ScriptRow(script: s, isLast: s == scripts.last),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// 单个脚本行
+class _ScriptRow extends ConsumerWidget {
+  final BlueprintScript script;
+  final bool isLast;
+
+  const _ScriptRow({required this.script, required this.isLast});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final s = script;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              const Icon(Icons.hub_outlined,
+                  size: 20, color: AppColors.peacock),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      s.name,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.ink,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${_fmtTime(s.updatedAt)} · ${s.nodes.length} 个节点',
+                      style: TextStyle(
+                          fontSize: 12, color: AppColors.inkSecondary),
+                    ),
+                  ],
+                ),
+              ),
+              _rowAction(
+                icon: Icons.edit_outlined,
+                tooltip: '编辑',
+                onTap: () => _openEditor(context, ref),
+              ),
+              _rowAction(
+                icon: Icons.drive_file_rename_outline_rounded,
+                tooltip: '重命名',
+                onTap: () => _rename(context, ref),
+              ),
+              _rowAction(
+                icon: Icons.copy_rounded,
+                tooltip: '复制',
+                onTap: () => _duplicate(context, ref),
+              ),
+              _rowAction(
+                icon: Icons.ios_share_rounded,
+                tooltip: '导出',
+                onTap: () => _export(context, ref),
+              ),
+              _rowAction(
+                icon: Icons.delete_outline_rounded,
+                tooltip: '删除',
+                color: AppColors.danger,
+                onTap: () => _delete(context, ref),
+              ),
+            ],
+          ),
+        ),
+        if (!isLast) const Divider(),
+      ],
+    );
+  }
+
+  Widget _rowAction({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+    Color? color,
+  }) {
+    return IconButton(
+      icon: Icon(icon, size: 20),
+      color: color ?? AppColors.inkSecondary,
+      tooltip: tooltip,
+      onPressed: onTap,
+    );
+  }
+
+  void _openEditor(BuildContext context, WidgetRef ref) {
+    ref.read(selectedNodeProvider.notifier).select(null);
+    ref.read(currentScriptProvider.notifier).open(script);
+    ref.read(appNavProvider.notifier).go(AppTab.editor);
+  }
+
+  Future<void> _rename(BuildContext context, WidgetRef ref) async {
+    final name = await _prompt(context, title: '重命名脚本', initial: script.name);
+    if (name == null) return;
+    await ref.read(scriptStorageProvider).rename(script, name);
+    await ref.read(scriptListProvider.notifier).refresh();
+  }
+
+  Future<void> _duplicate(BuildContext context, WidgetRef ref) async {
+    await ref
+        .read(scriptStorageProvider)
+        .duplicate(script, '${script.name} 副本');
+    await ref.read(scriptListProvider.notifier).refresh();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('已复制脚本')));
+  }
+
+  Future<void> _export(BuildContext context, WidgetRef ref) async {
+    final p = await getSaveLocation(suggestedName: '${script.name}.bpc.json');
+    if (p == null || !context.mounted) return;
+    try {
+      final json = await ref.read(scriptStorageProvider).exportToString(script);
+      await File(p.path).writeAsString(json);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('已导出到 ${p.path}')));
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('导出失败')));
+    }
+  }
+
+  Future<void> _delete(BuildContext context, WidgetRef ref) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除脚本'),
+        content: Text('确定删除「${script.name}」吗？此操作不可恢复。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.danger,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await ref.read(scriptStorageProvider).delete(script.name);
+    await ref.read(scriptListProvider.notifier).refresh();
+  }
+}
+
+String _fmtTime(DateTime t) {
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${t.year}-${two(t.month)}-${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
+}
+
+/// 行内通用名称输入对话框（供脚本行复用）
+Future<String?> _prompt(
+  BuildContext context, {
+  required String title,
+  String? initial,
+}) async {
+  final controller = TextEditingController(text: initial ?? '');
+  final result = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(title),
+      content: TextField(
+        controller: controller,
+        autofocus: true,
+        decoration: const InputDecoration(labelText: '名称'),
+        onSubmitted: (v) => Navigator.pop(ctx, v),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+          child: const Text('确定'),
+        ),
+      ],
+    ),
+  );
+  controller.dispose();
+  return (result == null || result.isEmpty) ? null : result;
+}

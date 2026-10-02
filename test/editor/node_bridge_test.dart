@@ -1,0 +1,87 @@
+import 'package:blueprint_clicker/models/blueprint.dart';
+import 'package:blueprint_clicker/ui/editor/node_bridge.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+BlueprintScript _sample() {
+  final s = BlueprintScript(name: '桥接测试')..variables['found'] = true;
+  s.nodes['a'] = BPNode(id: 'a', type: 'start', x: 10, y: 20);
+  s.nodes['b'] = BPNode(id: 'b', type: 'delay', x: 220, y: 20, params: {'ms': 350});
+  s.nodes['c'] = BPNode(id: 'c', type: 'condition', x: 430, y: 20, params: {'op': '>=', 'leftVar': 'found', 'rightConst': 'true'});
+  s.edges['e1'] = BPEdge(
+    id: 'e1',
+    from: const PortRef(nodeId: 'a', port: 'out'),
+    to: const PortRef(nodeId: 'b', port: 'in'),
+    kind: EdgeKind.exec,
+  );
+  s.edges['e2'] = BPEdge(
+    id: 'e2',
+    from: const PortRef(nodeId: 'b', port: 'out'),
+    to: const PortRef(nodeId: 'c', port: 'in'),
+    kind: EdgeKind.exec,
+  );
+  return s;
+}
+
+void main() {
+  test('定义注册表包含全部 13 种节点类型', () {
+    expect(blueprintNodeRegistry, isNotNull);
+    // 抽查几种关键类型定义可实例化（start 无参数字段，data 允许为空）
+    for (final type in ['start', 'click', 'swipe', 'longPress', 'screenshot', 'ocr', 'imageMatch', 'condition', 'loop', 'delay', 'setVar', 'storage', 'subScript']) {
+      final node = blueprintNodeRegistry.instantiate(type, id: 't_$type', position: Offset.zero);
+      expect(node.type, type, reason: '类型 $type 应可实例化');
+      if (type != 'start') {
+        expect(node.data, isNotEmpty, reason: '类型 $type 应带默认参数');
+      }
+      // 端口由定义派生
+      expect(node.ports, isNotEmpty, reason: '类型 $type 应有派生端口');
+    }
+  });
+
+  test('BlueprintScript → Graph → BlueprintScript 往返一致', () {
+    final original = _sample();
+    final graph = blueprintToGraph(original);
+    expect(graph.nodes.length, 3);
+    expect(graph.connections.length, 2);
+
+    final restored = graphToBlueprint(graph, name: original.name);
+    expect(restored.name, '桥接测试');
+    expect(restored.nodes.keys.toSet(), original.nodes.keys.toSet());
+    expect(restored.edges.keys.toSet(), original.edges.keys.toSet());
+
+    // 节点位置与参数
+    final b = restored.nodes['b']!;
+    expect(b.type, 'delay');
+    expect(b.x, 220);
+    expect(b.y, 20);
+    expect(b.params['ms'], 350);
+
+    final c = restored.nodes['c']!;
+    expect(c.params['op'], '>=');
+    expect(c.params['leftVar'], 'found');
+
+    // 边端点与类型
+    final e1 = restored.edges['e1']!;
+    expect(e1.kind, EdgeKind.exec);
+    expect(e1.from.nodeId, 'a');
+    expect(e1.from.port, 'out');
+    expect(e1.to.nodeId, 'b');
+    expect(e1.to.port, 'in');
+  });
+
+  test('数据边经输出端口 kind 正确识别为 data', () {
+    final s = BlueprintScript(name: 'data-edge');
+    s.nodes['a'] = BPNode(id: 'a', type: 'ocr', params: {'resultVar': 'ocrText'});
+    s.nodes['b'] = BPNode(id: 'b', type: 'condition', params: {'op': 'contains', 'leftVar': '', 'rightConst': 'ok'});
+    // OCR 的 text 输出端口（data 类型）连到 condition 的 left 输入（data 类型）
+    s.edges['d1'] = BPEdge(
+      id: 'd1',
+      from: const PortRef(nodeId: 'a', port: 'text'),
+      to: const PortRef(nodeId: 'b', port: 'left'),
+      kind: EdgeKind.data,
+    );
+    final graph = blueprintToGraph(s);
+    final restored = graphToBlueprint(graph, name: s.name);
+    expect(restored.edges['d1']!.kind, EdgeKind.data);
+    expect(restored.edges['d1']!.from.port, 'text');
+  });
+}
