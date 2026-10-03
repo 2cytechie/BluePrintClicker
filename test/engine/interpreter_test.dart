@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:blueprint_clicker/engine/interpreter.dart';
@@ -64,6 +64,18 @@ class MockAutomation implements PlatformAutomation {
   }
 
   @override
+  Future<void> scrollWheel(int x, int y, {int dy = 0, int dx = 0}) async {
+    _check();
+    calls.add('scrollWheel($x,$y,dy:$dy,dx:$dx)');
+  }
+
+  @override
+  Future<void> keyTap(int vkCode, {int durationMs = 60, bool extended = false}) async {
+    _check();
+    calls.add('keyTap($vkCode,$durationMs,ext:$extended)');
+  }
+
+  @override
   Future<ScreenCapture> capture({RectPx? region}) async {
     _check();
     calls.add('capture');
@@ -75,7 +87,9 @@ class MockAutomation implements PlatformAutomation {
   @override
   (int, int) cursorPos() => (0, 0);
   @override
-  (bool, bool) buttonsDown() => (false, false);
+  (bool, bool, bool) buttonsDown() => (false, false, false);
+  @override
+  bool isKeyDown(int vkCode) => false;
 }
 
 class MockRecognition implements RecognitionService {
@@ -90,16 +104,18 @@ class MockRecognition implements RecognitionService {
       const MatchResult(true, 50, 60, 0.95);
 }
 
-/// 测试钩子集合：捕获日志/节点高亮，支持注入子脚本
+/// 测试钩子集合：捕获日志/节点高亮，支持注入子脚本/录制
 class Hooks {
   final List<String> logs = [];
   final List<String?> nodeChanges = [];
   BlueprintScript? subScript;
+  Recording? recording;
 
   late final EngineHooks engineHooks = EngineHooks(
     log: logs.add,
     onNodeChange: nodeChanges.add,
     loadScript: (name) async => name == 'sub' ? subScript : null,
+    loadRecording: (id) async => id == recording?.id ? recording : null,
   );
 }
 
@@ -163,6 +179,30 @@ void main() {
       final vars = await _run(s, auto: auto);
       expect(auto.calls, contains('click(10,20,count:1,left)'));
       expect(vars.snapshot(), isEmpty);
+    });
+
+    test('开始节点执行次数：整条链重复执行', () async {
+      final s = _build([
+        _node('a', 'start', {'count': 3}),
+        _node('c', 'click', {'x': 1, 'y': 2, 'button': 'left'}),
+      ], [
+        _edge('e1', 'a', 'out', 'c', 'in'),
+      ]);
+      final auto = MockAutomation();
+      await _run(s, auto: auto);
+      expect(auto.calls.where((c) => c == 'click(1,2,count:1,left)').length, 3);
+    });
+
+    test('双击节点：以 count:2 执行并传递按键类型', () async {
+      final s = _build([
+        _node('a', 'start'),
+        _node('d', 'doubleClick', {'x': 5, 'y': 6, 'button': 'middle'}),
+      ], [
+        _edge('e1', 'a', 'out', 'd', 'in'),
+      ]);
+      final auto = MockAutomation();
+      await _run(s, auto: auto);
+      expect(auto.calls, contains('click(5,6,count:2,middle)'));
     });
 
     test('条件分支走向 true/false 出口', () async {
@@ -316,6 +356,54 @@ void main() {
           automation: auto, recognition: MockRecognition(), hooks: hooks.engineHooks);
       await engine.run(main);
       expect(auto.calls, contains('click(7,8,count:1,left)'));
+    });
+
+    test('执行录制节点：回放录制的动作序列', () async {
+      final hooks = Hooks()
+        ..recording = Recording(
+          id: 'r1',
+          name: '测试录制',
+          createdAt: DateTime(2026, 1, 1),
+          actions: const [
+            RecClick(0, 100, 200),
+            RecScroll(120, 300, 400, dy: 240),
+            RecKey(300, 0x43, durationMs: 80), // C 键
+          ],
+        );
+      final s = _build([
+        _node('a', 'start'),
+        _node('pr', 'playRecording', {'recordingId': 'r1'}),
+      ], [
+        _edge('e1', 'a', 'out', 'pr', 'in'),
+      ]);
+      final auto = MockAutomation();
+      await _run(s, auto: auto, hooks: hooks);
+      expect(auto.calls, contains('click(100,200,count:1,left)'));
+      expect(auto.calls, contains('scrollWheel(300,400,dy:240,dx:0)'));
+      expect(auto.calls, contains('keyTap(67,80,ext:false)'));
+      expect(hooks.logs.join(), contains('测试录制'));
+    });
+
+    test('执行录制节点：未选择/找不到录制时给出错误日志', () async {
+      final s1 = _build([
+        _node('a', 'start'),
+        _node('pr', 'playRecording', {'recordingId': ''}),
+      ], [
+        _edge('e1', 'a', 'out', 'pr', 'in'),
+      ]);
+      final hooks1 = Hooks();
+      await _run(s1, hooks: hooks1);
+      expect(hooks1.logs.join(), contains('未选择录制'));
+
+      final s2 = _build([
+        _node('a', 'start'),
+        _node('pr', 'playRecording', {'recordingId': 'ghost'}),
+      ], [
+        _edge('e1', 'a', 'out', 'pr', 'in'),
+      ]);
+      final hooks2 = Hooks();
+      await _run(s2, hooks: hooks2);
+      expect(hooks2.logs.join(), contains('找不到录制'));
     });
 
     test('缺少开始节点给出错误日志', () async {

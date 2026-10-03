@@ -36,7 +36,12 @@ class WindowsRecognitionService implements RecognitionService {
     }
     final png = await _encodePng(img);
     final dir = await getTemporaryDirectory();
-    final file = File('${dir.path}/bpc_ocr_${DateTime.now().microsecondsSinceEpoch}.png');
+    // 必须用 Platform.pathSeparator 拼接：WinRT 的 GetFileFromPathAsync
+    // 不接受混合分隔符路径（如 "C:\Temp/x.png"），会抛 0x80070002
+    // 「系统找不到指定的文件」；而 Win32 写入端会自动规范化，导致
+    // 写入成功但原生读取失败的隐蔽错误。
+    final file = File(
+        '${dir.path}${Platform.pathSeparator}bpc_ocr_${DateTime.now().microsecondsSinceEpoch}.png');
     await file.writeAsBytes(png);
     String text;
     try {
@@ -78,15 +83,7 @@ class WindowsRecognitionService implements RecognitionService {
     return RawImage(cw, ch, out);
   }
 
-  Future<Uint8List> _encodePng(RawImage img) async {
-    final image = await img.toImage();
-    try {
-      final data = await image.toByteData(format: ui.ImageByteFormat.png);
-      return data!.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-    } finally {
-      image.dispose();
-    }
-  }
+  Future<Uint8List> _encodePng(RawImage img) => img.toPng();
 }
 
 /// 从模板图片文件加载 RawImage（BGRA）。

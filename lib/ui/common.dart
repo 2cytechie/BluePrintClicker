@@ -2,6 +2,58 @@ import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
 
+/// 统一页头：左侧标题（含可选说明），右侧状态徽章/操作按钮
+class PageHeader extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final List<Widget> trailing;
+
+  const PageHeader({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.trailing = const [],
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.ink,
+                  ),
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle!,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.inkSecondary,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          ...trailing,
+        ],
+      ),
+    );
+  }
+}
+
 /// 通用分节卡片：月白圆角底 + 标题行（图标/标题/尾部组件）+ 内容
 class SectionCard extends StatelessWidget {
   final String title;

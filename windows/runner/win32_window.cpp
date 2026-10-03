@@ -16,6 +16,20 @@ namespace {
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
 #endif
 
+/// Window attributes for light-mode title bar styling (Windows 11+).
+/// Redefined in case the developer's machine has a Windows SDK older than
+/// version 10.0.22000.0.
+#ifndef DWMWA_CAPTION_COLOR
+#define DWMWA_CAPTION_COLOR 35
+#endif
+#ifndef DWMWA_TEXT_COLOR
+#define DWMWA_TEXT_COLOR 36
+#endif
+
+// 标题栏配色：与应用象牙白背景 (#FFFBF0) 融为一体，文字使用主墨色 (#17323B)。
+constexpr const COLORREF kCaptionColor = RGB(0xFF, 0xFB, 0xF0);
+constexpr const COLORREF kTitleTextColor = RGB(0x17, 0x32, 0x3B);
+
 constexpr const wchar_t kWindowClassName[] = L"FLUTTER_RUNNER_WIN32_WINDOW";
 
 /// Registry key for app theme preference.
@@ -285,4 +299,11 @@ void Win32Window::UpdateTheme(HWND const window) {
     DwmSetWindowAttribute(window, DWMWA_USE_IMMERSIVE_DARK_MODE,
                           &enable_dark_mode, sizeof(enable_dark_mode));
   }
+
+  // 将标题栏融入应用背景（在 Windows 10 及更早系统上这些属性不可用，
+  // DwmSetWindowAttribute 会静默失败，不影响运行）。
+  ::DwmSetWindowAttribute(window, DWMWA_CAPTION_COLOR, &kCaptionColor,
+                          sizeof(kCaptionColor));
+  ::DwmSetWindowAttribute(window, DWMWA_TEXT_COLOR, &kTitleTextColor,
+                          sizeof(kTitleTextColor));
 }

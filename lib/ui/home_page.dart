@@ -19,60 +19,61 @@ class HomePage extends ConsumerWidget {
     final automation = ref.watch(automationProvider);
     return Scaffold(
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 900),
+            constraints: const BoxConstraints(maxWidth: 1080),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // 标题区
-                const Text(
-                  '蓝图连点器',
-                  style: TextStyle(
-                    fontSize: 34,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.peacock,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Windows 自动化 · 蓝图工作流',
-                  style: TextStyle(fontSize: 15, color: AppColors.inkSecondary),
+                const PageHeader(
+                  title: '蓝图连点器',
+                  subtitle: 'Windows 自动化 · 蓝图工作流',
                 ),
                 // 平台不支持提示
                 if (!automation.isSupported) ...[
-                  const SizedBox(height: 16),
                   const _UnsupportedBanner(),
+                  const SizedBox(height: 16),
                 ],
-                const SizedBox(height: 20),
-                // 功能入口卡片
-                Wrap(
-                  spacing: 14,
-                  runSpacing: 14,
-                  children: const [
-                    _EntryCard(
-                      title: '快捷连点',
-                      desc: '设定频率与点位，立即开始连点',
-                      icon: Icons.touch_app_rounded,
-                      color: NodeCategory.interaction,
-                      route: '/clicker',
-                    ),
-                    _EntryCard(
-                      title: '蓝图编辑器',
-                      desc: '拖拽节点搭建自动化工作流',
-                      icon: Icons.account_tree_outlined,
-                      color: NodeCategory.logic,
-                      route: '/editor',
-                    ),
-                    _EntryCard(
-                      title: '录制回放',
-                      desc: '录制鼠标操作，回放或转为脚本',
-                      icon: Icons.fiber_manual_record_rounded,
-                      color: NodeCategory.media,
-                      route: '/recordings',
-                    ),
-                  ],
+                // 功能入口卡片：宽窗口等宽铺满，窄窗口自动换行
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final wide = constraints.maxWidth >= 760;
+                    final cards = const [
+                      _EntryCard(
+                        title: '蓝图编辑器',
+                        desc: '拖拽节点搭建自动化工作流',
+                        icon: Icons.account_tree_outlined,
+                        color: NodeCategory.logic,
+                        route: '/editor',
+                      ),
+                      _EntryCard(
+                        title: '录制回放',
+                        desc: '录制键鼠操作，回放或供蓝图「执行录制」节点调用',
+                        icon: Icons.fiber_manual_record_rounded,
+                        color: NodeCategory.media,
+                        route: '/recordings',
+                      ),
+                    ];
+                    if (wide) {
+                      return Row(
+                        children: [
+                          for (final (i, card) in cards.indexed) ...[
+                            if (i > 0) const SizedBox(width: 14),
+                            Expanded(child: card),
+                          ],
+                        ],
+                      );
+                    }
+                    return Wrap(
+                      spacing: 14,
+                      runSpacing: 14,
+                      children: cards
+                          .map((c) => SizedBox(width: 260, child: c))
+                          .toList(),
+                    );
+                  },
                 ),
                 const SizedBox(height: 28),
                 // 我的脚本
@@ -137,12 +138,14 @@ class HomePage extends ConsumerWidget {
           .importFromString(text, fallbackName: fallback);
       await ref.read(scriptListProvider.notifier).refresh();
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('导入成功')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('导入成功')));
     } catch (_) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('导入失败：文件不是有效的脚本 JSON')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('导入失败：文件不是有效的脚本 JSON')));
     }
   }
 
@@ -196,8 +199,11 @@ class _UnsupportedBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.info_outline_rounded,
-              size: 18, color: AppColors.inkSecondary),
+          const Icon(
+            Icons.info_outline_rounded,
+            size: 18,
+            color: AppColors.inkSecondary,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -229,64 +235,60 @@ class _EntryCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return SizedBox(
-      width: 272,
-      child: Material(
-        color: AppColors.moonWhite,
+    return Material(
+      color: AppColors.moonWhite,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: () => ref.read(appNavProvider.notifier).go(
-                switch (route) {
-                  '/clicker' => AppTab.clicker,
-                  '/editor' => AppTab.editor,
-                  '/recordings' => AppTab.recordings,
-                  _ => AppTab.home,
-                },
+        onTap: () => ref.read(appNavProvider.notifier).go(switch (route) {
+          '/editor' => AppTab.editor,
+          '/recordings' => AppTab.recordings,
+          _ => AppTab.home,
+        }),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Row(
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: color.color.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: color.color, size: 24),
               ),
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Row(
-              children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: color.color.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(icon, color: color.color, size: 24),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.ink,
-                        ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.ink,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        desc,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.inkSecondary,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      desc,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.inkSecondary,
                       ),
-                    ],
-                  ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
-                const Icon(Icons.chevron_right_rounded,
-                    color: AppColors.inkSecondary),
-              ],
-            ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.inkSecondary,
+              ),
+            ],
           ),
         ),
       ),
@@ -331,8 +333,11 @@ class _ScriptList extends ConsumerWidget {
             ),
             child: Column(
               children: [
-                Icon(Icons.note_add_rounded,
-                    size: 40, color: AppColors.inkSecondary),
+                Icon(
+                  Icons.note_add_rounded,
+                  size: 40,
+                  color: AppColors.inkSecondary,
+                ),
                 const SizedBox(height: 10),
                 Text(
                   '还没有脚本，点击右上角「新建」创建第一个蓝图，或导入 .bpc.json 文件',
@@ -374,8 +379,11 @@ class _ScriptRow extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Row(
             children: [
-              const Icon(Icons.hub_outlined,
-                  size: 20, color: AppColors.peacock),
+              const Icon(
+                Icons.hub_outlined,
+                size: 20,
+                color: AppColors.peacock,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -395,7 +403,9 @@ class _ScriptRow extends ConsumerWidget {
                     Text(
                       '${_fmtTime(s.updatedAt)} · ${s.nodes.length} 个节点',
                       style: TextStyle(
-                          fontSize: 12, color: AppColors.inkSecondary),
+                        fontSize: 12,
+                        color: AppColors.inkSecondary,
+                      ),
                     ),
                   ],
                 ),
@@ -467,8 +477,9 @@ class _ScriptRow extends ConsumerWidget {
         .duplicate(script, '${script.name} 副本');
     await ref.read(scriptListProvider.notifier).refresh();
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('已复制脚本')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('已复制脚本')));
   }
 
   Future<void> _export(BuildContext context, WidgetRef ref) async {
@@ -478,12 +489,14 @@ class _ScriptRow extends ConsumerWidget {
       final json = await ref.read(scriptStorageProvider).exportToString(script);
       await File(p.path).writeAsString(json);
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('已导出到 ${p.path}')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('已导出到 ${p.path}')));
     } catch (_) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('导出失败')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('导出失败')));
     }
   }
 
@@ -499,9 +512,7 @@ class _ScriptRow extends ConsumerWidget {
             child: const Text('取消'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.danger,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.danger),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('删除'),
           ),

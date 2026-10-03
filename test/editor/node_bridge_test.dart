@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:blueprint_clicker/models/blueprint.dart';
 import 'package:blueprint_clicker/ui/editor/node_bridge.dart';
+import 'package:fl_nodes_v2/fl_nodes_v2.dart' as fl;
 import 'package:flutter_test/flutter_test.dart';
 
 BlueprintScript _sample() {
@@ -23,10 +26,10 @@ BlueprintScript _sample() {
 }
 
 void main() {
-  test('定义注册表包含全部 13 种节点类型', () {
+  test('定义注册表包含全部 14 种节点类型', () {
     expect(blueprintNodeRegistry, isNotNull);
     // 抽查几种关键类型定义可实例化（start 无参数字段，data 允许为空）
-    for (final type in ['start', 'click', 'swipe', 'longPress', 'screenshot', 'ocr', 'imageMatch', 'condition', 'loop', 'delay', 'setVar', 'storage', 'subScript']) {
+    for (final type in ['start', 'click', 'doubleClick', 'swipe', 'longPress', 'screenshot', 'ocr', 'imageMatch', 'condition', 'loop', 'delay', 'setVar', 'storage', 'subScript']) {
       final node = blueprintNodeRegistry.instantiate(type, id: 't_$type', position: Offset.zero);
       expect(node.type, type, reason: '类型 $type 应可实例化');
       if (type != 'start') {
@@ -83,5 +86,19 @@ void main() {
     final restored = graphToBlueprint(graph, name: s.name);
     expect(restored.edges['d1']!.kind, EdgeKind.data);
     expect(restored.edges['d1']!.from.port, 'text');
+  });
+
+  test('编辑器控制器往返：normalise 后图仍可正确转回脚本并 JSON 序列化', () {
+    final s = _sample();
+    final controller = fl.NodeEditorController(definitions: blueprintNodeRegistry);
+    controller.replaceGraph(blueprintToGraph(s), recordHistory: false, normalise: true);
+
+    final out = graphToBlueprint(controller.graph, name: s.name, createdAt: s.createdAt);
+    expect(out.nodes.length, s.nodes.length, reason: '节点不应丢失');
+    expect(out.edges.length, s.edges.length, reason: '连线不应丢失');
+    expect(out.nodes['b']!.params['ms'], 350);
+    expect(out.nodes['b']!.x, 220);
+    // 写盘前会做 JSON 编码，参数必须是可序列化的原始值
+    expect(jsonEncode(out.toJson()), contains('"b"'));
   });
 }

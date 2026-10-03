@@ -110,6 +110,17 @@ class RecordingStorage {
     await f.writeAsString(jsonEncode(r.toJson()));
   }
 
+  Future<Recording?> loadById(String id) async {
+    final d = await dir;
+    final f = File('${d.path}/$id.json');
+    if (!await f.exists()) return null;
+    try {
+      return Recording.fromJson(jsonDecode(await f.readAsString()) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<List<Recording>> list() async {
     final d = await dir;
     final files = await d.list().cast<File>().toList();

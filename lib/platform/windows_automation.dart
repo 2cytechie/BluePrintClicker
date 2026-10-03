@@ -22,23 +22,27 @@ class WindowsAutomation implements PlatformAutomation {
 
   @override
   Future<void> click(int x, int y, {MouseButton button = MouseButton.left, int count = 1}) async {
-    final right = button == MouseButton.right;
-    final n = count.clamp(1, 20);
-    for (var i = 0; i < n; i++) {
-      u32.clickAt(x, y, right: right);
-      if (i < n - 1) await Future<void>.delayed(const Duration(milliseconds: 40));
+    for (var i = 0; i < count.clamp(1, 20); i++) {
+      _clickOnce(x, y, button);
+      if (i < count - 1) await Future<void>.delayed(const Duration(milliseconds: 40));
     }
+  }
+
+  void _clickOnce(int x, int y, MouseButton button) {
+    u32.moveAbsolute(x, y);
+    u32.mouseDown(right: button == MouseButton.right, middle: button == MouseButton.middle);
+    u32.mouseUp(right: button == MouseButton.right, middle: button == MouseButton.middle);
   }
 
   @override
   Future<void> press(int x, int y, {MouseButton button = MouseButton.left}) async {
     u32.moveAbsolute(x, y);
-    u32.mouseDown(right: button == MouseButton.right);
+    u32.mouseDown(right: button == MouseButton.right, middle: button == MouseButton.middle);
   }
 
   @override
   Future<void> release({MouseButton button = MouseButton.left}) async =>
-      u32.mouseUp(right: button == MouseButton.right);
+      u32.mouseUp(right: button == MouseButton.right, middle: button == MouseButton.middle);
 
   @override
   Future<void> swipe(int x1, int y1, int x2, int y2, {int durationMs = 300}) async {
@@ -59,9 +63,35 @@ class WindowsAutomation implements PlatformAutomation {
   @override
   Future<void> longPress(int x, int y, {int durationMs = 800, MouseButton button = MouseButton.left}) async {
     u32.moveAbsolute(x, y);
-    u32.mouseDown(right: button == MouseButton.right);
+    u32.mouseDown(right: button == MouseButton.right, middle: button == MouseButton.middle);
     await Future<void>.delayed(Duration(milliseconds: durationMs.clamp(1, 60000)));
-    u32.mouseUp(right: button == MouseButton.right);
+    u32.mouseUp(right: button == MouseButton.right, middle: button == MouseButton.middle);
+  }
+
+  @override
+  Future<void> scrollWheel(int x, int y, {int dy = 0, int dx = 0}) async {
+    u32.moveAbsolute(x, y);
+    // 一条 SendInput 的 mouseData 为 32 位有符号，按格（±120）分次滚动
+    for (var d = dy; d != 0;) {
+      final step = d.clamp(-120, 120);
+      u32.wheelScroll(step);
+      d -= step;
+      if (d != 0) await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    for (var d = dx; d != 0;) {
+      final step = d.clamp(-120, 120);
+      u32.wheelScrollH(step);
+      d -= step;
+      if (d != 0) await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+  }
+
+  @override
+  Future<void> keyTap(int vkCode, {int durationMs = 60, bool extended = false}) async {
+    final dur = durationMs.clamp(0, 60000);
+    u32.keybdDown(vkCode, extended: extended);
+    if (dur > 0) await Future<void>.delayed(Duration(milliseconds: dur));
+    u32.keybdUp(vkCode, extended: extended);
   }
 
   @override
@@ -71,5 +101,8 @@ class WindowsAutomation implements PlatformAutomation {
   (int, int) cursorPos() => u32.cursorPos();
 
   @override
-  (bool, bool) buttonsDown() => u32.mouseButtonsDown();
+  (bool, bool, bool) buttonsDown() => u32.mouseButtonsDown();
+
+  @override
+  bool isKeyDown(int vkCode) => u32.isKeyDown(vkCode);
 }

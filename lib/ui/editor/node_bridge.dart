@@ -38,7 +38,7 @@ fl.NodePort _toFlPort(PortDef p) {
         );
 }
 
-/// 全部节点定义（13 种），由 kNodeTypes 生成
+/// 全部节点定义（14 种），由 kNodeTypes 生成
 List<fl.NodeDefinition> buildNodeDefinitions() => [
       for (final def in kNodeTypes)
         fl.NodeDefinition(

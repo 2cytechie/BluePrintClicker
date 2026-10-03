@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../core/theme.dart';
 
 /// 节点大类
@@ -6,26 +6,26 @@ enum NodeCategory { interaction, media, logic, data, script }
 
 extension NodeCategoryX on NodeCategory {
   String get label => switch (this) {
-        NodeCategory.interaction => '交互',
-        NodeCategory.media => '媒体',
-        NodeCategory.logic => '逻辑',
-        NodeCategory.data => '数据',
-        NodeCategory.script => '脚本',
-      };
+    NodeCategory.interaction => '交互',
+    NodeCategory.media => '媒体',
+    NodeCategory.logic => '逻辑',
+    NodeCategory.data => '数据',
+    NodeCategory.script => '脚本',
+  };
   Color get color => switch (this) {
-        NodeCategory.interaction => AppColors.nodeInteraction,
-        NodeCategory.media => AppColors.nodeMedia,
-        NodeCategory.logic => AppColors.nodeLogic,
-        NodeCategory.data => AppColors.nodeData,
-        NodeCategory.script => AppColors.nodeScript,
-      };
+    NodeCategory.interaction => AppColors.nodeInteraction,
+    NodeCategory.media => AppColors.nodeMedia,
+    NodeCategory.logic => AppColors.nodeLogic,
+    NodeCategory.data => AppColors.nodeData,
+    NodeCategory.script => AppColors.nodeScript,
+  };
   IconData get icon => switch (this) {
-        NodeCategory.interaction => Icons.touch_app_rounded,
-        NodeCategory.media => Icons.photo_camera_outlined,
-        NodeCategory.logic => Icons.account_tree_outlined,
-        NodeCategory.data => Icons.dataset_outlined,
-        NodeCategory.script => Icons.code_rounded,
-      };
+    NodeCategory.interaction => Icons.touch_app_rounded,
+    NodeCategory.media => Icons.photo_camera_outlined,
+    NodeCategory.logic => Icons.account_tree_outlined,
+    NodeCategory.data => Icons.dataset_outlined,
+    NodeCategory.script => Icons.code_rounded,
+  };
 }
 
 enum PortKind { exec, data }
@@ -37,12 +37,30 @@ class PortDef {
   final PortKind kind;
   final PortDir dir;
   final String label;
-  const PortDef(this.key, this.kind, this.dir, this.label);
-  Map<String, dynamic> toJson() => {'key': key, 'kind': kind.name, 'dir': dir.name, 'label': label};
+
+  /// 属性面板「输入端口说明」中展示的详细说明（仅需解释的输入口填写）
+  final String? note;
+  const PortDef(this.key, this.kind, this.dir, this.label, {this.note});
+  Map<String, dynamic> toJson() => {
+    'key': key,
+    'kind': kind.name,
+    'dir': dir.name,
+    'label': label,
+    if (note != null) 'note': note,
+  };
 }
 
 /// 参数字段类型（驱动属性面板渲染）
-enum ParamType { int, double, string, bool, enum_, varName, templateFile }
+enum ParamType {
+  int,
+  double,
+  string,
+  bool,
+  enum_,
+  varName,
+  templateFile,
+  recording,
+}
 
 class EnumOption {
   final String value;
@@ -57,7 +75,14 @@ class ParamFieldDef {
   final Object? defaultValue;
   final List<EnumOption> options;
   final String? hint;
-  const ParamFieldDef(this.key, this.label, this.type, {this.defaultValue, this.options = const [], this.hint});
+  const ParamFieldDef(
+    this.key,
+    this.label,
+    this.type, {
+    this.defaultValue,
+    this.options = const [],
+    this.hint,
+  });
 }
 
 class NodeTypeDef {
@@ -82,10 +107,14 @@ class NodeTypeDef {
 }
 
 // ---- 端口定义快捷构造 ----
-PortDef _inExec([String key = 'in', String label = '']) => PortDef(key, PortKind.exec, PortDir.input, label);
-PortDef _outExec([String key = 'out', String label = '']) => PortDef(key, PortKind.exec, PortDir.output, label);
-PortDef _inData(String key, String label) => PortDef(key, PortKind.data, PortDir.input, label);
-PortDef _outData(String key, String label) => PortDef(key, PortKind.data, PortDir.output, label);
+PortDef _inExec([String key = 'in', String label = '']) =>
+    PortDef(key, PortKind.exec, PortDir.input, label);
+PortDef _outExec([String key = 'out', String label = '']) =>
+    PortDef(key, PortKind.exec, PortDir.output, label);
+PortDef _inData(String key, String label, {String? note}) =>
+    PortDef(key, PortKind.data, PortDir.input, label, note: note);
+PortDef _outData(String key, String label) =>
+    PortDef(key, PortKind.data, PortDir.output, label);
 
 const _regionFields = [
   ParamFieldDef('useRegion', '仅指定区域', ParamType.bool, defaultValue: false),
@@ -102,25 +131,59 @@ final List<NodeTypeDef> kNodeTypes = [
     title: '开始',
     category: NodeCategory.script,
     icon: Icons.play_arrow_rounded,
-    description: '脚本执行入口，每个蓝图需要一个开始节点',
+    description: '脚本执行入口；执行次数为 0 表示一直执行，运行中按 F10 停止',
     inputs: [],
     outputs: [_outExec()],
-    params: [],
+    params: [
+      ParamFieldDef('count', '执行次数(0=一直执行)', ParamType.int, defaultValue: 1),
+    ],
   ),
   NodeTypeDef(
     type: 'click',
     title: '点击',
     category: NodeCategory.interaction,
     icon: Icons.ads_click_rounded,
-    description: '在指定坐标模拟鼠标点击，多指以快速连点序列模拟',
+    description: '在指定坐标模拟一次鼠标点击',
     inputs: [_inExec()],
     outputs: [_outExec()],
     params: [
       ParamFieldDef('x', 'X 坐标', ParamType.int, defaultValue: 100),
       ParamFieldDef('y', 'Y 坐标', ParamType.int, defaultValue: 100),
-      ParamFieldDef('fingers', '点击次数(多指)', ParamType.int, defaultValue: 1, hint: '1=单击，n=连点 n 次'),
-      ParamFieldDef('button', '鼠标键', ParamType.enum_,
-          defaultValue: 'left', options: [EnumOption('left', '左键'), EnumOption('right', '右键')]),
+      ParamFieldDef(
+        'button',
+        '鼠标键',
+        ParamType.enum_,
+        defaultValue: 'left',
+        options: [
+          EnumOption('left', '左键'),
+          EnumOption('right', '右键'),
+          EnumOption('middle', '中键'),
+        ],
+      ),
+    ],
+  ),
+  NodeTypeDef(
+    type: 'doubleClick',
+    title: '双击',
+    category: NodeCategory.interaction,
+    icon: Icons.mouse_rounded,
+    description: '在指定坐标模拟鼠标双击（快速连击两次）',
+    inputs: [_inExec()],
+    outputs: [_outExec()],
+    params: [
+      ParamFieldDef('x', 'X 坐标', ParamType.int, defaultValue: 100),
+      ParamFieldDef('y', 'Y 坐标', ParamType.int, defaultValue: 100),
+      ParamFieldDef(
+        'button',
+        '鼠标键',
+        ParamType.enum_,
+        defaultValue: 'left',
+        options: [
+          EnumOption('left', '左键'),
+          EnumOption('right', '右键'),
+          EnumOption('middle', '中键'),
+        ],
+      ),
     ],
   ),
   NodeTypeDef(
@@ -132,14 +195,26 @@ final List<NodeTypeDef> kNodeTypes = [
     inputs: [_inExec()],
     outputs: [_outExec()],
     params: [
-      ParamFieldDef('mode', '模式', ParamType.enum_,
-          defaultValue: 'coords',
-          options: [EnumOption('coords', '起点终点'), EnumOption('direction', '方向距离')]),
+      ParamFieldDef(
+        'mode',
+        '模式',
+        ParamType.enum_,
+        defaultValue: 'coords',
+        options: [
+          EnumOption('coords', '起点终点'),
+          EnumOption('direction', '方向距离'),
+        ],
+      ),
       ParamFieldDef('startX', '起点X', ParamType.int, defaultValue: 400),
       ParamFieldDef('startY', '起点Y', ParamType.int, defaultValue: 300),
       ParamFieldDef('endX', '终点X', ParamType.int, defaultValue: 600),
       ParamFieldDef('endY', '终点Y', ParamType.int, defaultValue: 300),
-      ParamFieldDef('angle', '方向角(度,0=右,逆时针)', ParamType.double, defaultValue: 0),
+      ParamFieldDef(
+        'angle',
+        '方向角(度,0=右,逆时针)',
+        ParamType.double,
+        defaultValue: 0,
+      ),
       ParamFieldDef('distance', '距离(px)', ParamType.int, defaultValue: 200),
       ParamFieldDef('durationMs', '时长(ms)', ParamType.int, defaultValue: 300),
     ],
@@ -159,12 +234,36 @@ final List<NodeTypeDef> kNodeTypes = [
     ],
   ),
   NodeTypeDef(
+    type: 'playRecording',
+    title: '执行录制',
+    category: NodeCategory.interaction,
+    icon: Icons.smart_button_rounded,
+    description: '回放选中的录制动作序列（点击/滑动/长按/滚轮/按键按录制时序依次执行）',
+    inputs: [_inExec()],
+    outputs: [_outExec()],
+    params: [
+      ParamFieldDef(
+        'recordingId',
+        '选择录制',
+        ParamType.recording,
+        defaultValue: '',
+      ),
+    ],
+  ),
+  NodeTypeDef(
     type: 'screenshot',
     title: '截图',
     category: NodeCategory.media,
     icon: Icons.screenshot_monitor_rounded,
     description: '截取全屏或指定区域，供后续识别节点使用',
-    inputs: [_inExec(), _inData('image', '输入图像(可空)')],
+    inputs: [
+      _inExec(),
+      _inData(
+        'image',
+        '输入图像(可空)',
+        note: '本节点不读取该输入——截图始终现场采集（全屏或上方设定的区域）；此端口保留以与其他媒体节点保持一致。',
+      ),
+    ],
     outputs: [_outExec(), _outData('imageOut', '图像')],
     params: _regionFields,
   ),
@@ -174,11 +273,30 @@ final List<NodeTypeDef> kNodeTypes = [
     category: NodeCategory.media,
     icon: Icons.text_fields_rounded,
     description: '对图像/屏幕区域进行 OCR，文本写入变量',
-    inputs: [_inExec(), _inData('image', '输入图像(可空)')],
-    outputs: [_outExec(), _outData('text', '文本'), _outData('x', '区域X'), _outData('y', '区域Y')],
+    inputs: [
+      _inExec(),
+      _inData(
+        'image',
+        '输入图像(可空)',
+        note:
+            '可选数据输入。连接上游「截图」节点的「图像」输出时，直接识别该图像、不再重新截屏；不连接时自动现场截屏（或截取上方设定的区域）。'
+            '注意：在编辑器里点「测试识别」取不到上游图像，会现场截屏。',
+      ),
+    ],
+    outputs: [
+      _outExec(),
+      _outData('text', '文本'),
+      _outData('x', '区域X'),
+      _outData('y', '区域Y'),
+    ],
     params: [
       ..._regionFields,
-      ParamFieldDef('resultVar', '文本存入变量', ParamType.varName, defaultValue: 'ocrText'),
+      ParamFieldDef(
+        'resultVar',
+        '文本存入变量',
+        ParamType.varName,
+        defaultValue: 'ocrText',
+      ),
     ],
   ),
   NodeTypeDef(
@@ -187,15 +305,48 @@ final List<NodeTypeDef> kNodeTypes = [
     category: NodeCategory.media,
     icon: Icons.image_search_rounded,
     description: '在屏幕/图像中匹配模板图（游戏UI元素），命中结果写入变量',
-    inputs: [_inExec(), _inData('image', '输入图像(可空)')],
-    outputs: [_outExec(), _outData('found', '是否命中'), _outData('x', '命中X'), _outData('y', '命中Y'), _outData('score', '相似度')],
+    inputs: [
+      _inExec(),
+      _inData(
+        'image',
+        '输入图像(可空)',
+        note: '可选数据输入。连接上游图像时在该图像内匹配模板；不连接时自动现场截屏（或截取上方设定的区域）。',
+      ),
+    ],
+    outputs: [
+      _outExec(),
+      _outData('found', '是否命中'),
+      _outData('x', '命中X'),
+      _outData('y', '命中Y'),
+      _outData('score', '相似度'),
+    ],
     params: [
-      ParamFieldDef('templatePath', '模板图片', ParamType.templateFile, defaultValue: ''),
+      ParamFieldDef(
+        'templatePath',
+        '模板图片',
+        ParamType.templateFile,
+        defaultValue: '',
+      ),
       ParamFieldDef('threshold', '相似度阈值', ParamType.double, defaultValue: 0.8),
       ..._regionFields,
-      ParamFieldDef('foundVar', '命中标志存入变量', ParamType.varName, defaultValue: 'found'),
-      ParamFieldDef('posXVar', '命中X存入变量', ParamType.varName, defaultValue: 'matchX'),
-      ParamFieldDef('posYVar', '命中Y存入变量', ParamType.varName, defaultValue: 'matchY'),
+      ParamFieldDef(
+        'foundVar',
+        '命中标志存入变量',
+        ParamType.varName,
+        defaultValue: 'found',
+      ),
+      ParamFieldDef(
+        'posXVar',
+        '命中X存入变量',
+        ParamType.varName,
+        defaultValue: 'matchX',
+      ),
+      ParamFieldDef(
+        'posYVar',
+        '命中Y存入变量',
+        ParamType.varName,
+        defaultValue: 'matchY',
+      ),
     ],
   ),
   NodeTypeDef(
@@ -205,23 +356,50 @@ final List<NodeTypeDef> kNodeTypes = [
     icon: Icons.call_split_rounded,
     description: '比较两个值，执行流走向 true 或 false 出口',
     inputs: [_inExec(), _inData('left', '左值'), _inData('right', '右值')],
-    outputs: [PortDef('true', PortKind.exec, PortDir.output, '真'), PortDef('false', PortKind.exec, PortDir.output, '假')],
+    outputs: [
+      PortDef('true', PortKind.exec, PortDir.output, '真'),
+      PortDef('false', PortKind.exec, PortDir.output, '假'),
+    ],
     params: [
-      ParamFieldDef('op', '比较方式', ParamType.enum_,
-          defaultValue: '==',
-          options: [
-            EnumOption('==', '等于'),
-            EnumOption('!=', '不等于'),
-            EnumOption('>', '大于'),
-            EnumOption('<', '小于'),
-            EnumOption('>=', '大于等于'),
-            EnumOption('<=', '小于等于'),
-            EnumOption('contains', '包含'),
-          ]),
-      ParamFieldDef('leftVar', '左值变量名(可空)', ParamType.varName, defaultValue: ''),
-      ParamFieldDef('rightVar', '右值变量名(可空)', ParamType.varName, defaultValue: ''),
-      ParamFieldDef('leftConst', '左值常量(无连接/变量时)', ParamType.string, defaultValue: ''),
-      ParamFieldDef('rightConst', '右值常量(无连接/变量时)', ParamType.string, defaultValue: ''),
+      ParamFieldDef(
+        'op',
+        '比较方式',
+        ParamType.enum_,
+        defaultValue: '==',
+        options: [
+          EnumOption('==', '等于'),
+          EnumOption('!=', '不等于'),
+          EnumOption('>', '大于'),
+          EnumOption('<', '小于'),
+          EnumOption('>=', '大于等于'),
+          EnumOption('<=', '小于等于'),
+          EnumOption('contains', '包含'),
+        ],
+      ),
+      ParamFieldDef(
+        'leftVar',
+        '左值变量名(可空)',
+        ParamType.varName,
+        defaultValue: '',
+      ),
+      ParamFieldDef(
+        'rightVar',
+        '右值变量名(可空)',
+        ParamType.varName,
+        defaultValue: '',
+      ),
+      ParamFieldDef(
+        'leftConst',
+        '左值常量(无连接/变量时)',
+        ParamType.string,
+        defaultValue: '',
+      ),
+      ParamFieldDef(
+        'rightConst',
+        '右值常量(无连接/变量时)',
+        ParamType.string,
+        defaultValue: '',
+      ),
     ],
   ),
   NodeTypeDef(
@@ -231,7 +409,10 @@ final List<NodeTypeDef> kNodeTypes = [
     icon: Icons.loop_rounded,
     description: '循环执行 body 分支，次数为 0 表示无限循环；体内最后节点连回 continue 输入',
     inputs: [_inExec('enter', '进入'), _inExec('continue', '体返回')],
-    outputs: [PortDef('body', PortKind.exec, PortDir.output, '循环体'), PortDef('done', PortKind.exec, PortDir.output, '完成')],
+    outputs: [
+      PortDef('body', PortKind.exec, PortDir.output, '循环体'),
+      PortDef('done', PortKind.exec, PortDir.output, '完成'),
+    ],
     params: [
       ParamFieldDef('count', '循环次数(0=无限)', ParamType.int, defaultValue: 3),
     ],
@@ -268,8 +449,13 @@ final List<NodeTypeDef> kNodeTypes = [
     inputs: [_inExec(), _inData('value', '保存值')],
     outputs: [_outExec(), _outData('valueOut', '读取值')],
     params: [
-      ParamFieldDef('action', '操作', ParamType.enum_,
-          defaultValue: 'save', options: [EnumOption('save', '保存'), EnumOption('load', '读取')]),
+      ParamFieldDef(
+        'action',
+        '操作',
+        ParamType.enum_,
+        defaultValue: 'save',
+        options: [EnumOption('save', '保存'), EnumOption('load', '读取')],
+      ),
       ParamFieldDef('key', '存储键', ParamType.string, defaultValue: 'myKey'),
       ParamFieldDef('name', '关联变量名', ParamType.varName, defaultValue: 'myVar'),
     ],
@@ -282,10 +468,15 @@ final List<NodeTypeDef> kNodeTypes = [
     description: '调用已保存的其他脚本（独立变量表，递归深度上限 8）',
     inputs: [_inExec()],
     outputs: [_outExec()],
-    params: [ParamFieldDef('scriptName', '脚本名称', ParamType.string, defaultValue: '')],
+    params: [
+      ParamFieldDef('scriptName', '脚本名称', ParamType.string, defaultValue: ''),
+    ],
   ),
 ];
 
-final Map<String, NodeTypeDef> kNodeTypesById = {for (final t in kNodeTypes) t.type: t};
+final Map<String, NodeTypeDef> kNodeTypesById = {
+  for (final t in kNodeTypes) t.type: t,
+};
 
-NodeTypeDef nodeDef(String type) => kNodeTypesById[type] ?? kNodeTypesById['delay']!;
+NodeTypeDef nodeDef(String type) =>
+    kNodeTypesById[type] ?? kNodeTypesById['delay']!;

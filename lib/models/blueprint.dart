@@ -175,10 +175,28 @@ class RecLongPress extends RecordedAction {
   Map<String, dynamic> toJson() => {...super.toJson(), 'x': x, 'y': y, 'durationMs': durationMs};
 }
 
+/// 鼠标滚轮滚动（dy 正=上滚，120 为一格；一次事件只在一维上有 delta）
+class RecScroll extends RecordedAction {
+  final int x, y, dx, dy;
+  const RecScroll(super.offsetMs, this.x, this.y, {this.dx = 0, this.dy = 0});
+  @override
+  Map<String, dynamic> toJson() => {...super.toJson(), 'x': x, 'y': y, 'dx': dx, 'dy': dy};
+}
+
+/// 键盘按键（一次按下+抬起，durationMs 为按住时长）
+class RecKey extends RecordedAction {
+  final int vkCode, durationMs;
+  final bool extended;
+  const RecKey(super.offsetMs, this.vkCode, {this.durationMs = 60, this.extended = false});
+  @override
+  Map<String, dynamic> toJson() =>
+      {...super.toJson(), 'vkCode': vkCode, 'durationMs': durationMs, 'extended': extended};
+}
+
 /// 操作记录（录制会话）
 class Recording {
   final String id;
-  final String name;
+  String name;
   final DateTime createdAt;
   final List<RecordedAction> actions;
   Recording({required this.id, required this.name, required this.createdAt, required this.actions});
@@ -212,52 +230,14 @@ class Recording {
       case 'RecLongPress':
         return RecLongPress(offset, (j['x'] as num).toInt(), (j['y'] as num).toInt(),
             (j['durationMs'] as num).toInt());
+      case 'RecScroll':
+        return RecScroll(offset, (j['x'] as num).toInt(), (j['y'] as num).toInt(),
+            dx: (j['dx'] as num?)?.toInt() ?? 0, dy: (j['dy'] as num?)?.toInt() ?? 0);
+      case 'RecKey':
+        return RecKey(offset, (j['vkCode'] as num).toInt(),
+            durationMs: (j['durationMs'] as num?)?.toInt() ?? 60,
+            extended: j['extended'] as bool? ?? false);
     }
     return null;
-  }
-
-  /// 转为可编辑/可运行的蓝图脚本
-  BlueprintScript toBlueprint() {
-    final s = BlueprintScript(name: name);
-    final start = BPNode(id: 'n_start', type: 'start', x: 40, y: 60);
-    s.nodes[start.id] = start;
-    String prevId = start.id;
-    for (var i = 0; i < actions.length; i++) {
-      final a = actions[i];
-      final id = 'n_a$i';
-      BPNode node;
-      switch (a) {
-        case RecClick c:
-          node = BPNode(id: id, type: 'click', x: 60 + i * 190.0, y: 160, params: {
-            'x': c.x, 'y': c.y, 'fingers': c.count, 'button': c.button,
-          });
-          // 与下一动作间隔较大时插入延时
-        case RecSwipe w:
-          node = BPNode(id: id, type: 'swipe', x: 60 + i * 190.0, y: 160, params: {
-            'mode': 'coords', 'startX': w.x1, 'startY': w.y1, 'endX': w.x2, 'endY': w.y2,
-            'angle': 0.0, 'distance': 200, 'durationMs': w.durationMs,
-          });
-        case RecLongPress p:
-          node = BPNode(id: id, type: 'longPress', x: 60 + i * 190.0, y: 160, params: {
-            'x': p.x, 'y': p.y, 'durationMs': p.durationMs,
-          });
-      }
-      s.nodes[id] = node;
-      final prevGap = i == 0 ? a.offsetMs : a.offsetMs - actions[i - 1].offsetMs;
-      String linkFrom = prevId;
-      if (prevGap > 80) {
-        final dId = 'n_d$i';
-        s.nodes[dId] = BPNode(id: dId, type: 'delay', x: 60 + i * 190.0 - 95, y: 40, params: {'ms': prevGap});
-        s.edges['e_${dId}_o'] = BPEdge(id: 'e_${dId}_o',
-            from: PortRef(nodeId: linkFrom, port: 'out'),
-            to: PortRef(nodeId: dId, port: 'in'), kind: EdgeKind.exec);
-        linkFrom = dId;
-      }
-      s.edges['e_${id}_i'] = BPEdge(id: 'e_${id}_i',
-          from: PortRef(nodeId: linkFrom, port: linkFrom == start.id ? 'out' : 'out'),
-          to: PortRef(nodeId: id, port: 'in'), kind: EdgeKind.exec);
-      prevId = id;
-    }
-    return s;
   }
 }

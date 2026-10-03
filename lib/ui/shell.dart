@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme.dart';
 import '../state/providers.dart';
-import 'clicker_page.dart';
 import 'editor/editor_page.dart';
 import 'home_page.dart';
 import 'recording_page.dart';
@@ -27,11 +26,10 @@ class AppShell extends ConsumerWidget {
             child: IndexedStack(
               index: switch (tab) {
                 AppTab.home => 0,
-                AppTab.clicker => 1,
-                AppTab.recordings => 2,
+                AppTab.recordings => 1,
                 AppTab.editor => 0,
               },
-              children: const [HomePage(), ClickerPage(), RecordingPage()],
+              children: const [HomePage(), RecordingPage()],
             ),
           ),
         ],
@@ -50,7 +48,7 @@ class _SideNav extends ConsumerWidget {
       color: AppColors.moonWhite,
       child: Column(
         children: [
-          const SizedBox(height: 18),
+          const SizedBox(height: 20),
           // 应用标识
           Container(
             width: 44,
@@ -71,16 +69,11 @@ class _SideNav extends ConsumerWidget {
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 24),
           const _NavItem(
             icon: Icons.home_rounded,
             label: '首页',
             tab: AppTab.home,
-          ),
-          const _NavItem(
-            icon: Icons.touch_app_rounded,
-            label: '连点',
-            tab: AppTab.clicker,
           ),
           const _NavItem(
             icon: Icons.account_tree_rounded,

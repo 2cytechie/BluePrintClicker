@@ -5,6 +5,7 @@ library;
 import 'package:blueprint_clicker/platform/platform_automation.dart';
 import 'package:blueprint_clicker/platform/win32/gdi32.dart' as gdi;
 import 'package:blueprint_clicker/platform/win32/user32.dart' as u32;
+import 'package:blueprint_clicker/platform/windows_automation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -45,5 +46,12 @@ void main() {
       final (x2, y2) = u32.cursorPos();
       expect(x2, x);
       expect(y2, y);
+    });
+
+    test('窗口/热键查询接口可调用（FFI 绑定有效）', () {
+      // 仅验证符号存在且可调用，不断言具体值（与系统当前状态相关）
+      expect(u32.ownForegroundWindow(), isA<int>());
+      expect(u32.isKeyDown(u32.vkF10), isA<bool>());
+      expect(const WindowsAutomation().isKeyDown(u32.vkF10), isA<bool>());
     });
 }

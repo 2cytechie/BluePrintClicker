@@ -1,8 +1,10 @@
 import 'package:fl_nodes_v2/fl_nodes_v2.dart' as fl;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme.dart';
 import '../../models/node_types.dart';
+import '../../state/providers.dart';
 
 /// 生成 NodeEditor.nodeBuilder 回调；运行中节点以孔雀蓝发光高亮。
 /// [runningNodeId] 由编辑器页捕获 runnerProvider 状态后传入。
@@ -74,7 +76,7 @@ class _NodeBodyContent extends StatelessWidget {
             ),
           ),
           // 参数摘要
-          if (summary.isNotEmpty)
+          if (summary.isNotEmpty || node.type == 'playRecording')
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
               child: Column(
@@ -90,6 +92,9 @@ class _NodeBodyContent extends StatelessWidget {
                         style: const TextStyle(fontSize: 11, color: AppColors.inkSecondary),
                       ),
                     ),
+                  // 执行录制节点：显示所选录制（跟随录制重命名/删除实时更新）
+                  if (node.type == 'playRecording')
+                    _RecordingSummary(recordingId: node.data['recordingId'] as String? ?? ''),
                 ],
               ),
             ),
@@ -110,9 +115,10 @@ class _NodeBodyContent extends StatelessWidget {
 
     switch (node.type) {
       case 'click':
-        final fingers = v('fingers');
-        lines.add('位置 (${v('x')}, ${v('y')})${fingers != null && fingers != '1' ? ' ×$fingers' : ''}');
+      case 'doubleClick':
+        lines.add('位置 (${v('x')}, ${v('y')})');
         if (v('button') == 'right') lines.add('右键');
+        if (v('button') == 'middle') lines.add('中键');
       case 'swipe':
         if (v('mode') == 'direction') {
           lines.add('方向 ${v('angle')}° 距离 ${v('distance')}');
@@ -158,7 +164,8 @@ class _NodeBodyContent extends StatelessWidget {
         final s = v('scriptName');
         lines.add(s?.isEmpty == false ? '调用「$s」' : '未选择脚本');
       case 'start':
-        break;
+        final c = v('count') ?? '1'; // 旧脚本无此参数时按默认 1 次
+        lines.add(c == '0' ? '一直执行（F10 停止）' : '执行 $c 次');
     }
     return lines;
   }
@@ -173,4 +180,36 @@ class _NodeBodyContent extends StatelessWidget {
         'contains' => '包含',
         _ => '?',
       };
+}
+
+/// 执行录制节点的录制摘要：按 id 解析录制名（未选择/已删除给出提示）
+class _RecordingSummary extends ConsumerWidget {
+  const _RecordingSummary({required this.recordingId});
+
+  final String recordingId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    const style = TextStyle(fontSize: 11, color: AppColors.inkSecondary);
+    final async = ref.watch(recordingsProvider);
+
+    Widget line(String label) => Text('录制：$label',
+        maxLines: 1, overflow: TextOverflow.ellipsis, style: style);
+
+    if (recordingId.isEmpty) return line('未选择录制');
+    return async.when(
+      loading: () => line('…'),
+      error: (e, _) => line('加载失败'),
+      data: (list) {
+        var name = '';
+        for (final r in list) {
+          if (r.id == recordingId) {
+            name = r.name;
+            break;
+          }
+        }
+        return line(name.isEmpty ? '录制已删除' : name);
+      },
+    );
+  }
 }

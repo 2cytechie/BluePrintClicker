@@ -87,34 +87,51 @@ void main() {
       expect(again.toJson()['nodes'].toString(), s.toJson()['nodes'].toString());
     });
 
-    test('录制转蓝图：动作序列生成节点与延时', () {
+    test('录制动作序列化：含滚轮/按键的新动作 round-trip', () {
       final rec = Recording(
         id: 'r1',
         name: '测试录制',
         createdAt: DateTime(2026, 1, 1),
         actions: const [
           RecClick(0, 100, 200, count: 2),
-          RecSwipe(1500, 0, 0, 300, 400, 250),
-          RecLongPress(3200, 50, 60, 900),
+          RecScroll(120, 300, 400, dy: 240),
+          RecScroll(240, 300, 400, dx: -120),
+          RecKey(360, 0x43, durationMs: 80),
+          RecKey(480, 0x26, durationMs: 500, extended: true),
         ],
       );
-      final bp = rec.toBlueprint();
-      expect(bp.findStart(), isNotNull);
-      // 3 动作节点 + 2 个插入延时（间隔>80ms）+ 1 start
-      expect(bp.nodes.values.where((n) => n.type == 'click').length, 1);
-      expect(bp.nodes.values.where((n) => n.type == 'swipe').length, 1);
-      expect(bp.nodes.values.where((n) => n.type == 'longPress').length, 1);
-      expect(bp.nodes.values.where((n) => n.type == 'delay').length, 2);
-      // 执行链连续：从 start 沿 exec 边可遍历全部动作节点
-      var visited = 0;
-      var cur = bp.findStart()!;
-      while (true) {
-        visited++;
-        final next = bp.outEdges(cur.id, 'out', kind: EdgeKind.exec);
-        if (next.isEmpty) break;
-        cur = bp.nodes[next.first.to.nodeId]!;
-      }
-      expect(visited, 6);
+      final json = jsonEncode(rec.toJson());
+      final restored = Recording.fromJson(jsonDecode(json) as Map<String, dynamic>);
+      expect(restored.id, 'r1');
+      expect(restored.name, '测试录制');
+      expect(restored.actions.length, 5);
+      final s1 = restored.actions[1] as RecScroll;
+      expect(s1.x, 300);
+      expect(s1.y, 400);
+      expect(s1.dy, 240);
+      expect(s1.dx, 0);
+      final s2 = restored.actions[2] as RecScroll;
+      expect(s2.dx, -120);
+      final k1 = restored.actions[3] as RecKey;
+      expect(k1.vkCode, 0x43);
+      expect(k1.durationMs, 80);
+      expect(k1.extended, isFalse);
+      final k2 = restored.actions[4] as RecKey;
+      expect(k2.vkCode, 0x26);
+      expect(k2.extended, isTrue);
+    });
+
+    test('录制名称可修改并持久化到 JSON', () {
+      final rec = Recording(
+        id: 'r1',
+        name: '旧名称',
+        createdAt: DateTime(2026, 1, 1),
+        actions: const [RecClick(0, 1, 2)],
+      );
+      rec.name = '新名称';
+      final restored = Recording.fromJson(
+          jsonDecode(jsonEncode(rec.toJson())) as Map<String, dynamic>);
+      expect(restored.name, '新名称');
     });
 
     test('删除节点时级联删除连接', () {

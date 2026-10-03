@@ -48,6 +48,17 @@ class RawImage {
     return frame.image;
   }
 
+  /// 编码为 PNG（供属性面板预览展示）
+  Future<Uint8List> toPng() async {
+    final image = await toImage();
+    try {
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      return data!.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    } finally {
+      image.dispose();
+    }
+  }
+
   Uint8List _rgba() {
     final rgba = Uint8List(bgra.length);
     for (var i = 0; i < bgra.length; i += 4) {

@@ -1,4 +1,4 @@
-﻿import 'dart:ffi';
+import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
 
@@ -7,16 +7,77 @@ final DynamicLibrary user32Lib = DynamicLibrary.open('user32.dll');
 
 // ---- 常量 ----
 const int inputMouse = 0;
+const int inputKeyboard = 1;
 const int mouseeventfMove = 0x0001;
 const int mouseeventfLeftdown = 0x0002;
 const int mouseeventfLeftup = 0x0004;
 const int mouseeventfRightdown = 0x0008;
 const int mouseeventfRightup = 0x0010;
+const int mouseeventfMiddledown = 0x0020;
+const int mouseeventfMiddleup = 0x0040;
+const int mouseeventfWheel = 0x0800;
+const int mouseeventfHwheel = 0x1000;
 const int mouseeventfAbsolutemove = 0x8000;
+const int keyeventfExtendedkey = 0x0001;
+const int keyeventfKeyup = 0x0002;
 const int smCxscreen = 0;
 const int smCyscreen = 1;
 const int vkLbutton = 0x01;
 const int vkRbutton = 0x02;
+const int vkMbutton = 0x04;
+// 低级鼠标钩子
+const int whMouseLl = 14;
+const int wmMousewheel = 0x020A;
+const int wmMouseHwheel = 0x020E;
+// 低级钩子中的鼠标键消息（坐标拾取用）
+const int wmMousemove = 0x0200;
+const int wmLbuttondown = 0x0201;
+const int wmLbuttonup = 0x0202;
+const int wmRbuttondown = 0x0204;
+const int wmRbuttonup = 0x0205;
+const int wmMbuttondown = 0x0207;
+const int wmMbuttonup = 0x0208;
+
+// ---- 常用虚拟键码 ----
+const int vkCancel = 0x03;
+const int vkBack = 0x08;
+const int vkTab = 0x09;
+const int vkReturn = 0x0D;
+const int vkShift = 0x10;
+const int vkControl = 0x11;
+const int vkMenu = 0x12; // Alt
+const int vkPause = 0x13;
+const int vkCapital = 0x14;
+const int vkEscape = 0x1B;
+const int vkSpace = 0x20;
+const int vkPrior = 0x21;
+const int vkNext = 0x22;
+const int vkEnd = 0x23;
+const int vkHome = 0x24;
+const int vkLeft = 0x25;
+const int vkUp = 0x26;
+const int vkRight = 0x27;
+const int vkDown = 0x28;
+const int vkInsert = 0x2D;
+const int vkDelete = 0x2E;
+const int vkLwin = 0x5B;
+const int vkRwin = 0x5C;
+const int vkApps = 0x5D;
+const int vkF10 = 0x79;
+const int vkNumlock = 0x90;
+const int vkLcontrol = 0xA2;
+const int vkRcontrol = 0xA3;
+const int vkLmenu = 0xA4;
+const int vkRmenu = 0xA5;
+
+/// 回放时需要 KEYEVENTF_EXTENDEDKEY 标志的键
+/// （非数字键盘区的方向/编辑键、右 Ctrl/右 Alt）
+bool isExtendedKey(int vk) => const {
+      vkPrior, vkNext, vkEnd, vkHome,
+      vkLeft, vkUp, vkRight, vkDown,
+      vkInsert, vkDelete,
+      vkRcontrol, vkRmenu,
+    }.contains(vk);
 
 final class _MouseInput extends Struct {
   @Long() external int dx;
@@ -27,8 +88,17 @@ final class _MouseInput extends Struct {
   external Pointer<Void> dwExtraInfo;
 }
 
+final class _KeyboardInput extends Struct {
+  @Uint16() external int wVk;
+  @Uint16() external int wScan;
+  @Uint32() external int dwFlags;
+  @Uint32() external int time;
+  external Pointer<Void> dwExtraInfo;
+}
+
 final class _InputUnion extends Union {
   external _MouseInput mi;
+  external _KeyboardInput ki;
 }
 
 final class _INPUT extends Struct {
@@ -57,6 +127,9 @@ typedef _GetCursorPosC = Int32 Function(Pointer<_POINT>);
 typedef _GetCursorPosDart = int Function(Pointer<_POINT>);
 final _getCursorPos = user32Lib.lookupFunction<_GetCursorPosC, _GetCursorPosDart>('GetCursorPos');
 
+/// 复用的坐标缓冲：轮询光标位置时免去每次分配/释放
+Pointer<_POINT>? _cursorBuf;
+
 typedef _GetAsyncKeyStateC = Int16 Function(Int32 vKey);
 typedef _GetAsyncKeyStateDart = int Function(int vKey);
 final _getAsyncKeyState = user32Lib.lookupFunction<_GetAsyncKeyStateC, _GetAsyncKeyStateDart>('GetAsyncKeyState');
@@ -65,14 +138,16 @@ int screenW() => _getSystemMetrics(smCxscreen);
 int screenH() => _getSystemMetrics(smCyscreen);
 
 (int, int) cursorPos() {
-  final p = calloc<_POINT>();
+  final p = _cursorBuf ??= calloc<_POINT>();
   _getCursorPos(p);
-  final r = (p.ref.x, p.ref.y);
-  calloc.free(p);
-  return r;
+  return (p.ref.x, p.ref.y);
 }
 
-(bool, bool) mouseButtonsDown() => (_getAsyncKeyState(vkLbutton) & 0x8000 != 0, _getAsyncKeyState(vkRbutton) & 0x8000 != 0);
+(bool, bool, bool) mouseButtonsDown() => (
+      _getAsyncKeyState(vkLbutton) & 0x8000 != 0,
+      _getAsyncKeyState(vkMbutton) & 0x8000 != 0,
+      _getAsyncKeyState(vkRbutton) & 0x8000 != 0,
+    );
 
 void setCursorPos(int x, int y) => _setCursorPos(x, y);
 
@@ -99,17 +174,167 @@ void _moveToNorm(int x, int y) {
 
 void moveTo(int x, int y) => _moveToNorm(x, y);
 
-void mouseDown({bool right = false}) =>
-    _sendMouse(right ? mouseeventfRightdown : mouseeventfLeftdown, 0, 0, 0);
+void mouseDown({bool right = false, bool middle = false}) => _sendMouse(
+      middle
+          ? mouseeventfMiddledown
+          : (right ? mouseeventfRightdown : mouseeventfLeftdown),
+      0, 0, 0,
+    );
 
-void mouseUp({bool right = false}) => _sendMouse(right ? mouseeventfRightup : mouseeventfLeftup, 0, 0, 0);
+void mouseUp({bool right = false, bool middle = false}) => _sendMouse(
+      middle
+          ? mouseeventfMiddleup
+          : (right ? mouseeventfRightup : mouseeventfLeftup),
+      0, 0, 0,
+    );
 
 /// 绝对坐标单击（先移动再按下抬起）
-void clickAt(int x, int y, {bool right = false}) {
+void clickAt(int x, int y, {bool right = false, bool middle = false}) {
   _moveToNorm(x, y);
-  mouseDown(right: right);
-  mouseUp(right: right);
+  mouseDown(right: right, middle: middle);
+  mouseUp(right: right, middle: middle);
 }
 
 /// 供拖拽/长按使用：移动到位置
 void moveAbsolute(int x, int y) => _moveToNorm(x, y);
+
+/// 垂直滚轮滚动（dy 正=上滚，120 为一格）
+void wheelScroll(int dy) => _sendMouse(mouseeventfWheel, 0, 0, dy);
+
+/// 水平滚轮滚动（dx 正=右滚，120 为一格）
+void wheelScrollH(int dx) => _sendMouse(mouseeventfHwheel, 0, 0, dx);
+
+/// 键盘虚拟键按下/抬起
+void keybdDown(int vk, {bool extended = false}) => _sendKey(vk, extended ? keyeventfExtendedkey : 0);
+
+void keybdUp(int vk, {bool extended = false}) =>
+    _sendKey(vk, keyeventfKeyup | (extended ? keyeventfExtendedkey : 0));
+
+void _sendKey(int vk, int flags) {
+  final p = calloc<_INPUT>();
+  final inp = p.ref;
+  inp.type = inputKeyboard;
+  inp.u.ki.wVk = vk;
+  inp.u.ki.wScan = 0;
+  inp.u.ki.dwFlags = flags;
+  inp.u.ki.time = 0;
+  inp.u.ki.dwExtraInfo = nullptr;
+  _sendInput(1, p, sizeOf<_INPUT>());
+  calloc.free(p);
+}
+
+/// 录制轮询用：虚拟键当前是否物理按下
+bool isKeyDown(int vk) => _getAsyncKeyState(vk) & 0x8000 != 0;
+
+/// 录制过滤用：调用线程（平台线程）当前活动窗口句柄；
+/// 返回非 0 表示焦点在本应用窗口（此时输入不记录），切到目标窗口后返回 0。
+int getActiveWindow() => _getActiveWindow();
+
+typedef _GetActiveWindowC = IntPtr Function();
+typedef _GetActiveWindowDart = int Function();
+final _getActiveWindow = user32Lib.lookupFunction<_GetActiveWindowC, _GetActiveWindowDart>('GetActiveWindow');
+
+// ---- 窗口显示状态（坐标拾取期间最小化本应用 / 结束后恢复） ----
+
+const int swMinimize = 6;
+const int swRestore = 9;
+
+/// kernel32 绑定（仅需进程 id，用于识别前台窗口归属）
+final DynamicLibrary kernel32Lib = DynamicLibrary.open('kernel32.dll');
+
+typedef _GetCurrentProcessIdC = Uint32 Function();
+typedef _GetCurrentProcessIdDart = int Function();
+final _getCurrentProcessId =
+    kernel32Lib.lookupFunction<_GetCurrentProcessIdC, _GetCurrentProcessIdDart>('GetCurrentProcessId');
+
+typedef _GetForegroundWindowC = IntPtr Function();
+typedef _GetForegroundWindowDart = int Function();
+final _getForegroundWindow =
+    user32Lib.lookupFunction<_GetForegroundWindowC, _GetForegroundWindowDart>('GetForegroundWindow');
+
+typedef _ShowWindowC = Int32 Function(IntPtr hWnd, Int32 nCmdShow);
+typedef _ShowWindowDart = int Function(int hWnd, int nCmdShow);
+final _showWindow = user32Lib.lookupFunction<_ShowWindowC, _ShowWindowDart>('ShowWindow');
+
+typedef _SetForegroundWindowC = Int32 Function(IntPtr hWnd);
+typedef _SetForegroundWindowDart = int Function(int hWnd);
+final _setForegroundWindow =
+    user32Lib.lookupFunction<_SetForegroundWindowC, _SetForegroundWindowDart>('SetForegroundWindow');
+
+typedef _BringWindowToTopC = Int32 Function(IntPtr hWnd);
+typedef _BringWindowToTopDart = int Function(int hWnd);
+final _bringWindowToTop =
+    user32Lib.lookupFunction<_BringWindowToTopC, _BringWindowToTopDart>('BringWindowToTop');
+
+typedef _GetWindowThreadProcessIdC = Uint32 Function(IntPtr hWnd, Pointer<Uint32> lpdwProcessId);
+typedef _GetWindowThreadProcessIdDart = int Function(int hWnd, Pointer<Uint32> lpdwProcessId);
+final _getWindowThreadProcessId = user32Lib
+    .lookupFunction<_GetWindowThreadProcessIdC, _GetWindowThreadProcessIdDart>('GetWindowThreadProcessId');
+
+/// 前台窗口属于本进程时返回其句柄，否则返回 0（避免误操作其他程序的窗口）
+int ownForegroundWindow() {
+  final hwnd = _getForegroundWindow();
+  if (hwnd == 0) return 0;
+  final pidPtr = calloc<Uint32>();
+  _getWindowThreadProcessId(hwnd, pidPtr);
+  final pid = pidPtr.value;
+  calloc.free(pidPtr);
+  return pid == _getCurrentProcessId() ? hwnd : 0;
+}
+
+/// 最小化（切到后台，避免遮挡目标区域）
+void minimizeWindow(int hwnd) => _showWindow(hwnd, swMinimize);
+
+/// 恢复显示并尝试置前激活
+void restoreWindow(int hwnd) {
+  _showWindow(hwnd, swRestore);
+  _setForegroundWindow(hwnd);
+  _bringWindowToTop(hwnd);
+}
+
+// ---- 低级鼠标钩子（WH_MOUSE_LL，捕获滚轮事件） ----
+
+final class POINTAPI extends Struct {
+  @Long() external int x;
+  @Long() external int y;
+}
+
+final class MSLLHOOKSTRUCT extends Struct {
+  external POINTAPI pt;
+  @Uint32() external int mouseData;
+  @Uint32() external int flags;
+  @Uint32() external int time;
+  external Pointer<Void> dwExtraInfo;
+}
+
+typedef HookProcC = IntPtr Function(Int32 nCode, IntPtr wParam, IntPtr lParam);
+typedef HookProcDart = int Function(int nCode, int wParam, int lParam);
+
+typedef _SetWindowsHookExCW = IntPtr Function(
+    Int32 idHook, Pointer<NativeFunction<HookProcC>> lpfn, IntPtr hMod, Uint32 dwThreadId);
+typedef _SetWindowsHookExDart = int Function(
+    int idHook, Pointer<NativeFunction<HookProcC>> lpfn, int hMod, int dwThreadId);
+final _setWindowsHookEx =
+    user32Lib.lookupFunction<_SetWindowsHookExCW, _SetWindowsHookExDart>('SetWindowsHookExW');
+
+typedef _UnhookWindowsHookExC = Int32 Function(IntPtr hhk);
+typedef _UnhookWindowsHookExDart = int Function(int hhk);
+final _unhookWindowsHookEx =
+    user32Lib.lookupFunction<_UnhookWindowsHookExC, _UnhookWindowsHookExDart>('UnhookWindowsHookEx');
+
+typedef _CallNextHookExC = IntPtr Function(
+    IntPtr hhk, Int32 nCode, IntPtr wParam, IntPtr lParam);
+typedef _CallNextHookExDart = int Function(
+    int hhk, int nCode, int wParam, int lParam);
+final _callNextHookEx =
+    user32Lib.lookupFunction<_CallNextHookExC, _CallNextHookExDart>('CallNextHookEx');
+
+/// 安装 WH_MOUSE_LL 钩子；[callback] 为 Dart 回调（须持有返回的 NativeCallable 防 GC）。
+/// 返回钩子句柄，失败返回 0。低级钩子回调依赖安装线程消息循环（Flutter 平台线程满足）。
+int installMouseHook(Pointer<NativeFunction<HookProcC>> callback) =>
+    _setWindowsHookEx(whMouseLl, callback, 0, 0);
+
+bool uninstallMouseHook(int handle) => _unhookWindowsHookEx(handle) != 0;
+
+int callNextHook(int nCode, int wParam, int lParam) =>
+    _callNextHookEx(0, nCode, wParam, lParam);

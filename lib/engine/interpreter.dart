@@ -1,9 +1,10 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../models/blueprint.dart';
 import '../platform/platform_automation.dart';
+import '../platform/recording.dart' show replayActions;
 import '../services/recognition.dart';
 import '../services/script_storage.dart' show DataStore;
 import '../services/windows_recognition.dart' show loadTemplateFile;
@@ -14,7 +15,17 @@ class EngineHooks {
   final void Function(String message) log;
   final void Function(String? nodeId) onNodeChange;
   final Future<BlueprintScript?> Function(String name) loadScript;
-  const EngineHooks({required this.log, required this.onNodeChange, required this.loadScript});
+
+  /// 按 id 加载录制（「执行录制」节点用），找不到返回 null
+  final Future<Recording?> Function(String id) loadRecording;
+  const EngineHooks({
+    required this.log,
+    required this.onNodeChange,
+    required this.loadScript,
+    this.loadRecording = _defaultLoadRecording,
+  });
+
+  static Future<Recording?> _defaultLoadRecording(String id) async => null;
 }
 
 /// 蓝图解释执行引擎：从开始节点沿执行流遍历，数据端口沿数据边取值。
@@ -65,8 +76,21 @@ class BlueprintInterpreter {
         hooks.log('错误：蓝图中没有「开始」节点');
         return;
       }
-      hooks.log('▶ 开始执行：${script.name}');
-      await _exec(script, start, 'enter');
+      // 开始节点执行次数：0/负 = 一直执行（运行中按 F10 停止）
+      final count = (start.params['count'] as num?)?.toInt() ?? 1;
+      final forever = count <= 0;
+      final suffix = forever ? '（一直执行，F10 停止）' : (count > 1 ? '（共 $count 次）' : '');
+      hooks.log('▶ 开始执行：${script.name}$suffix');
+      var round = 0;
+      while (!_stopped && (forever || round < count)) {
+        round++;
+        if (!forever && count > 1) hooks.log('—— 第 $round/$count 次 ——');
+        // 每轮清空端口与截图缓存（变量表跨轮保留，可作累计器）
+        _portValues.clear();
+        _loopRemaining.clear();
+        _lastImage = null;
+        await _exec(script, start, 'enter');
+      }
       hooks.log(_stopped ? '■ 已停止' : '✓ 执行完成');
     } on UnsupportedError catch (e) {
       hooks.log('✗ 平台不支持：${e.message}');
@@ -114,10 +138,17 @@ class BlueprintInterpreter {
       case 'click':
         final x = _paramInt(n, 'x', 'x');
         final y = _paramInt(n, 'y', 'y');
-        final fingers = (n.params['fingers'] as num?)?.toInt() ?? 1;
-        final right = (n.params['button'] as String?) == 'right';
-        await automation.click(x, y, button: right ? MouseButton.right : MouseButton.left, count: fingers);
-        hooks.log('点击 ($x, $y) ×$fingers${right ? ' 右键' : ''}');
+        final button = _mouseButton(n.params['button']);
+        await automation.click(x, y, button: button);
+        hooks.log('点击 ($x, $y)${_buttonLabel(button)}');
+        return 'out';
+
+      case 'doubleClick':
+        final x = _paramInt(n, 'x', 'x');
+        final y = _paramInt(n, 'y', 'y');
+        final button = _mouseButton(n.params['button']);
+        await automation.click(x, y, button: button, count: 2);
+        hooks.log('双击 ($x, $y)${_buttonLabel(button)}');
         return 'out';
 
       case 'swipe':
@@ -135,6 +166,25 @@ class BlueprintInterpreter {
         await automation.longPress(x, y, durationMs: dur);
         hooks.log('长按 ($x, $y) ${dur}ms');
         return 'out';
+
+      case 'playRecording':
+        {
+          final id = ((n.params['recordingId'] as String?) ?? '').trim();
+          if (id.isEmpty) {
+            hooks.log('执行录制失败：未选择录制');
+            return 'out';
+          }
+          final rec = await hooks.loadRecording(id);
+          if (rec == null) {
+            hooks.log('执行录制失败：找不到录制 "$id"（可能已删除）');
+            return 'out';
+          }
+          hooks.log('执行录制「${rec.name}」共 ${rec.actions.length} 个动作');
+          await replayActions(automation, rec.actions,
+              cancelled: () => _stopped, log: hooks.log);
+          hooks.log(_stopped ? '执行录制中止' : '录制「${rec.name}」执行完成');
+          return 'out';
+        }
 
       case 'screenshot':
         _lastImage = await _captureNow();
@@ -327,6 +377,19 @@ class BlueprintInterpreter {
     if (v is num) return v.toInt();
     return int.tryParse('$v') ?? 0;
   }
+
+  /// 解析节点参数中的鼠标键（'left'/'right'/'middle'，默认左键）
+  MouseButton _mouseButton(Object? v) => switch (v) {
+        'right' => MouseButton.right,
+        'middle' => MouseButton.middle,
+        _ => MouseButton.left,
+      };
+
+  String _buttonLabel(MouseButton b) => switch (b) {
+        MouseButton.right => ' 右键',
+        MouseButton.middle => ' 中键',
+        _ => '',
+      };
 
   (int, int) _swipeStart(BPNode n) =>
       ((n.params['startX'] as num?)?.toInt() ?? 0, (n.params['startY'] as num?)?.toInt() ?? 0);

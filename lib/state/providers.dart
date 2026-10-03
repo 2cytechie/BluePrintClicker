@@ -1,12 +1,15 @@
 import 'dart:async';
 
+import 'package:fl_nodes_v2/fl_nodes_v2.dart' as fl;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../engine/interpreter.dart';
 import '../models/blueprint.dart';
 import '../platform/automation_factory.dart';
+import '../platform/coordinate_picker.dart';
 import '../platform/platform_automation.dart';
 import '../platform/recording.dart';
+import '../services/media_tester.dart';
 import '../services/recognition.dart';
 import '../services/script_storage.dart';
 import '../services/windows_recognition.dart';
@@ -14,7 +17,7 @@ import '../services/windows_recognition.dart';
 // ---- 应用导航 ----
 
 /// 侧边栏导航页签；编辑器为全屏页（不显示侧边栏）
-enum AppTab { home, clicker, editor, recordings }
+enum AppTab { home, editor, recordings }
 
 class AppNavNotifier extends Notifier<AppTab> {
   @override
@@ -23,23 +26,44 @@ class AppNavNotifier extends Notifier<AppTab> {
   void go(AppTab tab) => state = tab;
 }
 
-final appNavProvider = NotifierProvider<AppNavNotifier, AppTab>(AppNavNotifier.new);
+final appNavProvider = NotifierProvider<AppNavNotifier, AppTab>(
+  AppNavNotifier.new,
+);
 
 // ---- 平台服务单例 ----
 
-final automationProvider = Provider<PlatformAutomation>((ref) => createAutomation());
+final automationProvider = Provider<PlatformAutomation>(
+  (ref) => createAutomation(),
+);
 
-final recognitionProvider = Provider<RecognitionService>((ref) => WindowsRecognitionService());
+final recognitionProvider = Provider<RecognitionService>(
+  (ref) => WindowsRecognitionService(),
+);
+
+/// 媒体节点测试器（属性面板「测试」按钮使用）
+final mediaTesterProvider = Provider<MediaTester>(
+  (ref) => MediaTester(
+    ref.watch(automationProvider),
+    ref.watch(recognitionProvider),
+  ),
+);
 
 final scriptStorageProvider = Provider<ScriptStorage>((ref) => ScriptStorage());
 
-final recordingStorageProvider = Provider<RecordingStorage>((ref) => RecordingStorage());
+final recordingStorageProvider = Provider<RecordingStorage>(
+  (ref) => RecordingStorage(),
+);
 
 final recordingServiceProvider = Provider<RecordingService>((ref) {
   final automation = ref.watch(automationProvider);
   if (automation.isSupported) return WindowsRecordingService(automation);
   return _NoopRecording();
 });
+
+/// 录制历史列表（录制页展示、属性面板「执行录制」节点下拉共用；操作后 invalidate 刷新）
+final recordingsProvider = FutureProvider<List<Recording>>(
+  (ref) => ref.watch(recordingStorageProvider).list(),
+);
 
 class _NoopRecording implements RecordingService {
   @override
@@ -56,16 +80,21 @@ class _NoopRecording implements RecordingService {
 
 class ScriptListNotifier extends AsyncNotifier<List<BlueprintScript>> {
   @override
-  Future<List<BlueprintScript>> build() async => ref.watch(scriptStorageProvider).listScripts();
+  Future<List<BlueprintScript>> build() async =>
+      ref.watch(scriptStorageProvider).listScripts();
 
   Future<void> refresh() async {
     state = const AsyncLoading();
-    state = await AsyncValue.guard(() => ref.read(scriptStorageProvider).listScripts());
+    state = await AsyncValue.guard(
+      () => ref.read(scriptStorageProvider).listScripts(),
+    );
   }
 }
 
 final scriptListProvider =
-    AsyncNotifierProvider<ScriptListNotifier, List<BlueprintScript>>(ScriptListNotifier.new);
+    AsyncNotifierProvider<ScriptListNotifier, List<BlueprintScript>>(
+      ScriptListNotifier.new,
+    );
 
 // ---- 当前编辑脚本 ----
 
@@ -78,11 +107,18 @@ class CurrentScriptNotifier extends Notifier<BlueprintScript?> {
 
   void _touch() {
     final s = state;
-    if (s != null) ref.read(scriptStorageProvider).save(s).then((_) => ref.read(scriptListProvider.notifier).refresh());
+    if (s != null) {
+      ref
+          .read(scriptStorageProvider)
+          .save(s)
+          .then((_) => ref.read(scriptListProvider.notifier).refresh());
+    }
   }
 
   void updateNodePosition(String nodeId, double x, double y) {
-    state?.nodes[nodeId]?..x = x..y = y;
+    state?.nodes[nodeId]
+      ?..x = x
+      ..y = y;
   }
 
   void addNode(BPNode node) {
@@ -108,7 +144,9 @@ class CurrentScriptNotifier extends Notifier<BlueprintScript?> {
     if (s == null) return;
     // 执行流输出口只允许一条出边
     if (edge.kind == EdgeKind.exec) {
-      s.edges.removeWhere((k, e) => e.from == edge.from && e.kind == EdgeKind.exec);
+      s.edges.removeWhere(
+        (k, e) => e.from == edge.from && e.kind == EdgeKind.exec,
+      );
     }
     // 输入端口只允许一条入边
     s.edges.removeWhere((k, e) => e.to == edge.to);
@@ -124,7 +162,9 @@ class CurrentScriptNotifier extends Notifier<BlueprintScript?> {
 }
 
 final currentScriptProvider =
-    NotifierProvider<CurrentScriptNotifier, BlueprintScript?>(CurrentScriptNotifier.new);
+    NotifierProvider<CurrentScriptNotifier, BlueprintScript?>(
+      CurrentScriptNotifier.new,
+    );
 
 // ---- 编辑器交互状态 ----
 
@@ -134,7 +174,9 @@ class SelectedNodeNotifier extends Notifier<String?> {
   void select(String? id) => state = id;
 }
 
-final selectedNodeProvider = NotifierProvider<SelectedNodeNotifier, String?>(SelectedNodeNotifier.new);
+final selectedNodeProvider = NotifierProvider<SelectedNodeNotifier, String?>(
+  SelectedNodeNotifier.new,
+);
 
 /// 正在拖拽的连线起点（输出口），拖到目标输入口松手完成连线
 class PendingConnectionNotifier extends Notifier<PortRef?> {
@@ -146,7 +188,99 @@ class PendingConnectionNotifier extends Notifier<PortRef?> {
 }
 
 final pendingConnectionProvider =
-    NotifierProvider<PendingConnectionNotifier, PortRef?>(PendingConnectionNotifier.new);
+    NotifierProvider<PendingConnectionNotifier, PortRef?>(
+      PendingConnectionNotifier.new,
+    );
+
+// ---- 全局坐标拾取 ----
+
+/// 一次拾取目标：确认后写回哪个节点的哪些参数
+class PickTarget {
+  final String nodeId;
+
+  /// 坐标写入的参数键（如 'x'/'y'、'startX'/'startY'）
+  final String keyX, keyY;
+
+  /// 按键类型写入的参数键（'button'，仅 click/doubleClick）；null = 不写按键
+  final String? buttonKey;
+
+  /// 悬浮提示标签（「拾取坐标」「拾取起点」…）
+  final String label;
+  const PickTarget({
+    required this.nodeId,
+    required this.keyX,
+    required this.keyY,
+    this.buttonKey,
+    required this.label,
+  });
+}
+
+/// 拾取进行中的状态（编辑器悬浮条实时显示光标坐标）
+class CoordinatePickState {
+  final PickTarget? target; // null = 空闲
+  final (int, int)? cursor;
+  const CoordinatePickState({this.target, this.cursor});
+
+  bool get active => target != null;
+}
+
+class CoordinatePickNotifier extends Notifier<CoordinatePickState> {
+  /// provider 被销毁后（离开编辑器页）异步恢复的代码不得再写 state
+  bool _alive = true;
+
+  @override
+  CoordinatePickState build() {
+    _alive = true;
+    ref.onDispose(() => _alive = false);
+    return const CoordinatePickState();
+  }
+
+  CoordinatePicker get _picker => ref.read(coordinatePickerProvider);
+
+  void _set(CoordinatePickState s) {
+    if (_alive) state = s;
+  }
+
+  /// 开始拾取；确认后坐标（及按键类型）经 [controller] 写回节点（支持撤销/重做）。
+  Future<void> start({
+    required fl.NodeEditorController controller,
+    required PickTarget target,
+  }) async {
+    if (state.active) return;
+    if (!ref.read(automationProvider).isSupported) return;
+    _set(CoordinatePickState(target: target, cursor: null));
+    final result = await _picker.pickPoint(
+      onCursorMove: (pos) {
+        if (state.active) _set(CoordinatePickState(target: target, cursor: pos));
+      },
+    );
+    // 拾取期间节点可能已被删除/切换
+    if (result != null && controller.graph.nodes.containsKey(target.nodeId)) {
+      controller.updateNode(
+        target.nodeId,
+        (n) => n.withData({
+          target.keyX: result.x,
+          target.keyY: result.y,
+          if (target.buttonKey != null) target.buttonKey!: result.button.name,
+        }),
+      );
+    }
+    _set(const CoordinatePickState());
+  }
+
+  /// UI 主动取消
+  void cancel() {
+    _picker.cancel();
+    _set(const CoordinatePickState());
+  }
+}
+
+final coordinatePickerProvider = Provider<CoordinatePicker>((ref) => CoordinatePicker());
+
+final coordinatePickProvider =
+    NotifierProvider<CoordinatePickNotifier, CoordinatePickState>(
+      CoordinatePickNotifier.new,
+    );
 
 // ---- 蓝图运行状态 ----
 
@@ -154,17 +288,29 @@ class RunnerState {
   final bool running;
   final String? currentNodeId;
   final List<String> logs;
-  const RunnerState({this.running = false, this.currentNodeId, this.logs = const []});
+  const RunnerState({
+    this.running = false,
+    this.currentNodeId,
+    this.logs = const [],
+  });
 
-  RunnerState copyWith({bool? running, String? currentNodeId, List<String>? logs}) => RunnerState(
-        running: running ?? this.running,
-        currentNodeId: currentNodeId ?? this.currentNodeId,
-        logs: logs ?? this.logs,
-      );
+  RunnerState copyWith({
+    bool? running,
+    String? currentNodeId,
+    List<String>? logs,
+  }) => RunnerState(
+    running: running ?? this.running,
+    currentNodeId: currentNodeId ?? this.currentNodeId,
+    logs: logs ?? this.logs,
+  );
 }
+
+/// 全局停止热键（F10）虚拟键码
+const int _vkF10 = 0x79;
 
 class RunnerNotifier extends Notifier<RunnerState> {
   BlueprintInterpreter? _engine;
+  Timer? _stopHotkey;
 
   @override
   RunnerState build() => const RunnerState();
@@ -174,7 +320,9 @@ class RunnerNotifier extends Notifier<RunnerState> {
     final automation = ref.read(automationProvider);
     if (!automation.isSupported) {
       state = state.copyWith(
-          logs: [...state.logs, '✗ ${automation.unsupportedReason}'], running: false);
+        logs: [...state.logs, '✗ ${automation.unsupportedReason}'],
+        running: false,
+      );
       return;
     }
     final engine = BlueprintInterpreter(
@@ -184,14 +332,32 @@ class RunnerNotifier extends Notifier<RunnerState> {
         log: (m) => _appendLog(m),
         onNodeChange: (id) => state = state.copyWith(currentNodeId: id),
         loadScript: (name) => ref.read(scriptStorageProvider).load(name),
+        loadRecording: (id) => ref.read(recordingStorageProvider).loadById(id),
       ),
     );
     _engine = engine;
-    state = state.copyWith(running: true, logs: [...state.logs, '—— 启动 ${script.name} ——']);
-    unawaited(engine.run(script).whenComplete(() {
-      state = state.copyWith(running: false, currentNodeId: null);
-      _engine = null;
-    }));
+    state = state.copyWith(
+      running: true,
+      logs: [...state.logs, '—— 启动 ${script.name} ——'],
+    );
+    // 全局停止热键：运行期间轮询检测 F10（不装钩子，避免拖慢目标窗口）
+    _stopHotkey?.cancel();
+    _stopHotkey = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      if (automation.isKeyDown(_vkF10)) {
+        _stopHotkey?.cancel();
+        _stopHotkey = null;
+        _appendLog('检测到 F10，停止执行');
+        stop();
+      }
+    });
+    unawaited(
+      engine.run(script).whenComplete(() {
+        _stopHotkey?.cancel();
+        _stopHotkey = null;
+        state = state.copyWith(running: false, currentNodeId: null);
+        _engine = null;
+      }),
+    );
   }
 
   void stop() {
@@ -218,161 +384,6 @@ class TimeOfDayish {
   }
 }
 
-final runnerProvider = NotifierProvider<RunnerNotifier, RunnerState>(RunnerNotifier.new);
-
-// ---- 快捷连点 ----
-
-enum ClickerPhase { idle, running, paused }
-
-class ClickerState {
-  final int intervalMs;
-  final List<(int, int)> points;
-  final int durationSec; // 0 = 不限时
-  final ClickerPhase phase;
-  final int remainingSec;
-  final int clickCount;
-  const ClickerState({
-    this.intervalMs = 100,
-    this.points = const [],
-    this.durationSec = 0,
-    this.phase = ClickerPhase.idle,
-    this.remainingSec = 0,
-    this.clickCount = 0,
-  });
-
-  ClickerState copyWith({
-    int? intervalMs,
-    List<(int, int)>? points,
-    int? durationSec,
-    ClickerPhase? phase,
-    int? remainingSec,
-    int? clickCount,
-  }) =>
-      ClickerState(
-        intervalMs: intervalMs ?? this.intervalMs,
-        points: points ?? this.points,
-        durationSec: durationSec ?? this.durationSec,
-        phase: phase ?? this.phase,
-        remainingSec: remainingSec ?? this.remainingSec,
-        clickCount: clickCount ?? this.clickCount,
-      );
-}
-
-class ClickerNotifier extends Notifier<ClickerState> {
-  Timer? _timer;
-  Timer? _tick;
-  Stopwatch? _elapsed;
-  int _index = 0;
-  int _total = 0;
-
-  @override
-  ClickerState build() => const ClickerState();
-  bool get _isSupported => ref.read(automationProvider).isSupported;
-
-  void setInterval(int ms) {
-    if (state.phase != ClickerPhase.idle) return;
-    state = state.copyWith(intervalMs: ms.clamp(1, 60000));
-  }
-
-  void setDuration(int sec) {
-    if (state.phase != ClickerPhase.idle) return;
-    state = state.copyWith(durationSec: sec.clamp(0, 86400));
-  }
-
-  void addPoint(int x, int y) {
-    if (state.phase != ClickerPhase.idle) return;
-    state = state.copyWith(points: [...state.points, (x, y)]);
-  }
-
-  void removePoint(int index) {
-    if (state.phase != ClickerPhase.idle) return;
-    final pts = [...state.points]..removeAt(index);
-    state = state.copyWith(points: pts);
-  }
-
-  Future<void> start() async {
-    if (state.phase != ClickerPhase.idle || state.points.isEmpty || !automationAvailable()) return;
-    state = state.copyWith(
-        phase: ClickerPhase.running,
-        remainingSec: state.durationSec,
-        clickCount: 0);
-    _index = 0;
-    _total = 0;
-    _elapsed = state.durationSec > 0 ? (Stopwatch()..start()) : null;
-    _tick = state.durationSec > 0
-        ? Timer.periodic(const Duration(milliseconds: 200), (_) => _updateCountdown())
-        : null;
-    unawaited(_loop());
-  }
-
-  bool automationAvailable() {
-    if (_isSupported) return true;
-    state = state.copyWith();
-    return false;
-  }
-
-  void _updateCountdown() {
-    final elapsed = _elapsed?.elapsed ?? Duration.zero;
-    final remain = state.durationSec - elapsed.inSeconds;
-    if (remain <= 0) {
-      stop();
-      return;
-    }
-    state = state.copyWith(remainingSec: remain);
-  }
-
-  Future<void> _loop() async {
-    final automation = ref.read(automationProvider);
-    while (state.phase == ClickerPhase.running && !_stoppedByTime()) {
-      final pts = state.points;
-      if (pts.isEmpty) break;
-      final p = pts[_index % pts.length];
-      _index++;
-      _total++;
-      state = state.copyWith(clickCount: _total);
-      try {
-        await automation.click(p.$1, p.$2);
-      } catch (e) {
-        pause();
-        return;
-      }
-      // 分片等待，便于快速响应暂停/停止
-      final interval = state.intervalMs;
-      var waited = 0;
-      while (waited < interval && state.phase == ClickerPhase.running) {
-        await Future<void>.delayed(const Duration(milliseconds: 10));
-        waited += 10;
-      }
-    }
-  }
-
-  bool _stoppedByTime() {
-    if (_elapsed == null) return false;
-    return _elapsed!.elapsed.inMilliseconds >= state.durationSec * 1000;
-  }
-
-  void pause() {
-    if (state.phase != ClickerPhase.running) return;
-    _elapsed?.stop();
-    state = state.copyWith(phase: ClickerPhase.paused);
-  }
-
-  void resume() {
-    if (state.phase != ClickerPhase.paused) return;
-    _elapsed?.start();
-    state = state.copyWith(phase: ClickerPhase.running);
-    unawaited(_loop());
-  }
-
-  void stop() {
-    _timer?.cancel();
-    _tick?.cancel();
-    _timer = null;
-    _tick = null;
-    _elapsed = null;
-    _index = 0;
-    state = state.copyWith(phase: ClickerPhase.idle, remainingSec: state.durationSec);
-  }
-}
-
-final clickerProvider = NotifierProvider<ClickerNotifier, ClickerState>(ClickerNotifier.new);
+final runnerProvider = NotifierProvider<RunnerNotifier, RunnerState>(
+  RunnerNotifier.new,
+);

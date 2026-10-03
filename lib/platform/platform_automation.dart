@@ -4,6 +4,7 @@ import 'dart:typed_data';
 class ScreenCapture {
   final int width;
   final int height;
+
   /// BGRA 顺序原始字节（Windows GDI 原生顺序）
   final Uint8List bgra;
   const ScreenCapture(this.width, this.height, this.bgra);
@@ -27,7 +28,7 @@ class RectPx {
 }
 
 /// 鼠标按键
-enum MouseButton { left, right }
+enum MouseButton { left, right, middle }
 
 /// 平台自动化抽象接口。
 /// UI 与执行引擎只依赖此接口；Windows 实现 Phase 1 提供，Android 为 Phase 2。
@@ -39,11 +40,27 @@ abstract interface class PlatformAutomation {
   (int, int) get screenSize;
 
   Future<void> moveMouse(int x, int y);
-  Future<void> click(int x, int y, {MouseButton button = MouseButton.left, int count = 1});
+  Future<void> click(
+    int x,
+    int y, {
+    MouseButton button = MouseButton.left,
+    int count = 1,
+  });
   Future<void> press(int x, int y, {MouseButton button = MouseButton.left});
   Future<void> release({MouseButton button = MouseButton.left});
   Future<void> swipe(int x1, int y1, int x2, int y2, {int durationMs = 300});
-  Future<void> longPress(int x, int y, {int durationMs = 800, MouseButton button = MouseButton.left});
+  Future<void> longPress(
+    int x,
+    int y, {
+    int durationMs = 800,
+    MouseButton button = MouseButton.left,
+  });
+
+  /// 鼠标滚轮滚动（先移动到指定位置再滚动；dy 正=上滚、dx 正=右滚，120 为一格）
+  Future<void> scrollWheel(int x, int y, {int dy = 0, int dx = 0});
+
+  /// 按下并抬起虚拟键（模拟一次按键，按住 durationMs 毫秒）
+  Future<void> keyTap(int vkCode, {int durationMs = 60, bool extended = false});
 
   /// 截屏（全屏或区域）
   Future<ScreenCapture> capture({RectPx? region});
@@ -51,8 +68,11 @@ abstract interface class PlatformAutomation {
   /// 当前鼠标物理坐标（录制用）
   (int, int) cursorPos();
 
-  /// 鼠标左/右键是否按下（录制用）
-  (bool left, bool right) buttonsDown();
+  /// 鼠标左/中/右键是否按下（录制用）
+  (bool left, bool middle, bool right) buttonsDown();
+
+  /// 虚拟键当前是否物理按下（全局停止热键 F10 检测用）
+  bool isKeyDown(int vkCode);
 }
 
 /// 未支持平台的降级实现：拒绝所有动作，给出提示，不崩溃。
@@ -68,15 +88,35 @@ class UnsupportedPlatformAutomation implements PlatformAutomation {
   @override
   Future<void> moveMouse(int x, int y) => _deny();
   @override
-  Future<void> click(int x, int y, {MouseButton button = MouseButton.left, int count = 1}) => _deny();
+  Future<void> click(
+    int x,
+    int y, {
+    MouseButton button = MouseButton.left,
+    int count = 1,
+  }) => _deny();
   @override
-  Future<void> press(int x, int y, {MouseButton button = MouseButton.left}) => _deny();
+  Future<void> press(int x, int y, {MouseButton button = MouseButton.left}) =>
+      _deny();
   @override
   Future<void> release({MouseButton button = MouseButton.left}) => _deny();
   @override
-  Future<void> swipe(int x1, int y1, int x2, int y2, {int durationMs = 300}) => _deny();
+  Future<void> swipe(int x1, int y1, int x2, int y2, {int durationMs = 300}) =>
+      _deny();
   @override
-  Future<void> longPress(int x, int y, {int durationMs = 800, MouseButton button = MouseButton.left}) => _deny();
+  Future<void> longPress(
+    int x,
+    int y, {
+    int durationMs = 800,
+    MouseButton button = MouseButton.left,
+  }) => _deny();
+  @override
+  Future<void> scrollWheel(int x, int y, {int dy = 0, int dx = 0}) => _deny();
+  @override
+  Future<void> keyTap(
+    int vkCode, {
+    int durationMs = 60,
+    bool extended = false,
+  }) => _deny();
   @override
   Future<ScreenCapture> capture({RectPx? region}) async {
     throw UnsupportedError(unsupportedReason!);
@@ -85,6 +125,8 @@ class UnsupportedPlatformAutomation implements PlatformAutomation {
   @override
   (int, int) cursorPos() => (0, 0);
   @override
-  (bool, bool) buttonsDown() => (false, false);
+  (bool, bool, bool) buttonsDown() => (false, false, false);
+  @override
+  bool isKeyDown(int vkCode) => false;
   Never _deny() => throw UnsupportedError(unsupportedReason!);
 }

@@ -27,7 +27,7 @@ abstract final class AppColors {
   static const dataWire = nodeData;
 }
 
- ThemeData buildAppTheme() {
+ThemeData buildAppTheme() {
   final base = ThemeData(
     useMaterial3: true,
     brightness: Brightness.light,
@@ -73,7 +73,7 @@ abstract final class AppColors {
         foregroundColor: AppColors.peacockDeep,
         side: const BorderSide(color: AppColors.peacock),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 106, vertical: 12),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
@@ -94,7 +94,11 @@ abstract final class AppColors {
       isDense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
     ),
-    dividerTheme: const DividerThemeData(color: AppColors.outline, thickness: 1, space: 1),
+    dividerTheme: const DividerThemeData(
+      color: AppColors.outline,
+      thickness: 1,
+      space: 1,
+    ),
     sliderTheme: const SliderThemeData(
       activeTrackColor: AppColors.peacock,
       thumbColor: AppColors.peacockDeep,
