@@ -76,6 +76,18 @@ class MockAutomation implements PlatformAutomation {
   }
 
   @override
+  Future<void> keyDown(int vkCode, {bool extended = false}) async {
+    _check();
+    calls.add('keyDown($vkCode,ext:$extended)');
+  }
+
+  @override
+  Future<void> keyUp(int vkCode, {bool extended = false}) async {
+    _check();
+    calls.add('keyUp($vkCode,ext:$extended)');
+  }
+
+  @override
   Future<ScreenCapture> capture({RectPx? region}) async {
     _check();
     calls.add('capture');

@@ -237,10 +237,10 @@ packages:
     dependency: "direct main"
     description:
       name: fl_nodes_v2
-      sha256: "8c0e5d65b8e145be920af27e3c8a999e3c4e394b3c6b276c4631153b6fb34527"
+      sha256: "76b3264fc2afbd34b58dd10cd16be517705bd79479f786d065927d59395c1e49"
       url: "https://pub.flutter-io.cn"
     source: hosted
-    version: "1.0.0"
+    version: "1.4.0"
   flutter:
     dependency: "direct main"
     description: flutter

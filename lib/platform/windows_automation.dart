@@ -95,6 +95,16 @@ class WindowsAutomation implements PlatformAutomation {
   }
 
   @override
+  Future<void> keyDown(int vkCode, {bool extended = false}) async {
+    u32.keybdDown(vkCode, extended: extended);
+  }
+
+  @override
+  Future<void> keyUp(int vkCode, {bool extended = false}) async {
+    u32.keybdUp(vkCode, extended: extended);
+  }
+
+  @override
   Future<ScreenCapture> capture({RectPx? region}) async => gdi.captureScreen(region: region);
 
   @override

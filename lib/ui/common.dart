@@ -54,7 +54,7 @@ class PageHeader extends StatelessWidget {
   }
 }
 
-/// 通用分节卡片：面板色圆角底 + 标题行（图标/标题/尾部组件）+ 内容
+/// 通用分节卡片：月白圆角底 + 标题行（图标/标题/尾部组件）+ 内容
 class SectionCard extends StatelessWidget {
   final String title;
   final IconData? icon;
@@ -74,7 +74,7 @@ class SectionCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.moonWhite,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -84,7 +84,7 @@ class SectionCard extends StatelessWidget {
           Row(
             children: [
               if (icon != null) ...[
-                Icon(icon, size: 18, color: AppColors.primaryDeep),
+                Icon(icon, size: 18, color: Colors.white),
                 const SizedBox(width: 6),
               ],
               Expanded(
@@ -131,6 +131,76 @@ class StatusBadge extends StatelessWidget {
           fontWeight: FontWeight.w600,
           color: color,
         ),
+      ),
+    );
+  }
+}
+
+/// 紧凑数字输入：外部数据变化自动回显，输入中不打断焦点
+class NumField extends StatefulWidget {
+  final String label;
+  final int value;
+  final int width;
+  final int min;
+  final int max;
+  final ValueChanged<int> onChanged;
+
+  const NumField({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.width,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+  });
+
+  @override
+  State<NumField> createState() => _NumFieldState();
+}
+
+class _NumFieldState extends State<NumField> {
+  late final TextEditingController _controller;
+  int _lastReported = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value.toString());
+    _lastReported = widget.value;
+  }
+
+  @override
+  void didUpdateWidget(NumField old) {
+    super.didUpdateWidget(old);
+    // 外部数据变化（如拖拽屏幕图标改坐标）→ 同步回显
+    if (widget.value != _lastReported) {
+      _controller.text = widget.value.toString();
+      _lastReported = widget.value;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: widget.width.toDouble(),
+      child: TextField(
+        controller: _controller,
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(labelText: widget.label),
+        onChanged: (t) {
+          final v = int.tryParse(t.trim());
+          if (v == null) return;
+          final clamped = v.clamp(widget.min, widget.max);
+          _lastReported = clamped;
+          widget.onChanged(clamped);
+        },
       ),
     );
   }

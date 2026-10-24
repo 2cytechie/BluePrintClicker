@@ -45,7 +45,7 @@ class _SideNav extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
       width: 88,
-      color: AppColors.surface,
+      color: AppColors.moonWhite,
       child: Column(
         children: [
           const SizedBox(height: 20),
@@ -54,10 +54,10 @@ class _SideNav extends ConsumerWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: AppColors.primary,
+              color: AppColors.peacock,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Icon(Icons.hub_rounded, color: AppColors.onTint, size: 26),
+            child: const Icon(Icons.hub_rounded, color: Colors.white, size: 26),
           ),
           const SizedBox(height: 6),
           const Text(
@@ -104,7 +104,7 @@ class _NavItem extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 10),
       child: Material(
-        color: selected ? AppColors.primary : Colors.transparent,
+        color: selected ? AppColors.peacock : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -117,7 +117,7 @@ class _NavItem extends ConsumerWidget {
                 Icon(
                   icon,
                   size: 24,
-                  color: selected ? AppColors.onTint : AppColors.inkSecondary,
+                  color: selected ? Colors.white : AppColors.inkSecondary,
                 ),
                 const SizedBox(height: 3),
                 Text(
@@ -125,7 +125,7 @@ class _NavItem extends ConsumerWidget {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                    color: selected ? AppColors.onTint : AppColors.inkSecondary,
+                    color: selected ? Colors.white : AppColors.inkSecondary,
                   ),
                 ),
               ],

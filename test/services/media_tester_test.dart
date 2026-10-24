@@ -44,6 +44,10 @@ class FakeAutomation implements PlatformAutomation {
   @override
   Future<void> keyTap(int vkCode, {int durationMs = 60, bool extended = false}) async {}
   @override
+  Future<void> keyDown(int vkCode, {bool extended = false}) async {}
+  @override
+  Future<void> keyUp(int vkCode, {bool extended = false}) async {}
+  @override
   (int, int) cursorPos() => (0, 0);
   @override
   (bool, bool, bool) buttonsDown() => (false, false, false);

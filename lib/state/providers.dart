@@ -13,6 +13,7 @@ import '../services/media_tester.dart';
 import '../services/recognition.dart';
 import '../services/script_storage.dart';
 import '../services/windows_recognition.dart';
+import '../platform/screen_marker.dart';
 
 // ---- 应用导航 ----
 
@@ -59,6 +60,11 @@ final recordingServiceProvider = Provider<RecordingService>((ref) {
   if (automation.isSupported) return WindowsRecordingService(automation);
   return _NoopRecording();
 });
+
+/// 屏幕定位图标服务（动作编辑页「屏幕定位」用；单例持有钩子与重绘状态）
+final screenMarkerProvider = Provider<ScreenMarkerService>(
+  (_) => ScreenMarkerService(),
+);
 
 /// 录制历史列表（录制页展示、属性面板「执行录制」节点下拉共用；操作后 invalidate 刷新）
 final recordingsProvider = FutureProvider<List<Recording>>(

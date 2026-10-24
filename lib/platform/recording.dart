@@ -72,7 +72,8 @@ class WindowsRecordingService implements RecordingService {
     _maxDist = 0;
     _keysDown.clear();
     _hook.stop();
-    return List.of(_actions);
+    // 时间重叠的按键合并为组合键（如 Ctrl+C）
+    return mergeKeyCombos(_actions);
   }
 
   void _poll() {
@@ -191,53 +192,141 @@ class WindowsRecordingService implements RecordingService {
   }
 }
 
+/// 全局停止热键 F10 的虚拟键码（回放期间按下即刻中止）
+const int vkStopReplay = 0x79;
+
 /// 通用回放：按录制时的偏移间隔执行动作序列。
-/// [cancelled] 返回 true 时中止；[log] 可选输出进度。
-/// 供录制页回放与蓝图「执行录制」节点共用。
+/// [cancelled] 返回 true 时中止；[log] 可选输出进度；
+/// [loopCount] 循环次数、[loopIntervalMs] 两轮之间隔。
+/// 内建 F10 停止热键检测（100ms 轮询），等待切分为小分片，按下即刻中止。
+/// 供录制页回放、历史回放、编辑页试运行与蓝图「执行录制」节点共用。
 Future<void> replayActions(
   PlatformAutomation automation,
   List<RecordedAction> actions, {
   bool Function()? cancelled,
   void Function(String message)? log,
+  int loopCount = 1,
+  int loopIntervalMs = 0,
 }) async {
-  var prevOffset = 0;
-  for (final a in actions) {
-    if (cancelled?.call() ?? false) return;
-    final wait = a.offsetMs - prevOffset;
-    if (wait > 0) await Future<void>.delayed(Duration(milliseconds: wait));
-    prevOffset = a.offsetMs;
-    switch (a) {
-      case RecClick c:
-        await automation.click(
-          c.x,
-          c.y,
-          button: switch (c.button) {
-            'right' => MouseButton.right,
-            'middle' => MouseButton.middle,
-            _ => MouseButton.left,
-          },
-          count: c.count,
-        );
-      case RecSwipe w:
-        await automation.swipe(
-          w.x1,
-          w.y1,
-          w.x2,
-          w.y2,
-          durationMs: w.durationMs,
-        );
-      case RecLongPress p:
-        await automation.longPress(p.x, p.y, durationMs: p.durationMs);
-      case RecScroll s:
-        await automation.scrollWheel(s.x, s.y, dy: s.dy, dx: s.dx);
-      case RecKey k:
-        await automation.keyTap(
-          k.vkCode,
-          durationMs: k.durationMs,
-          extended: k.extended,
-        );
+  var aborted = false;
+  bool abortRequested() =>
+      aborted ||
+      (cancelled?.call() ?? false) ||
+      automation.isKeyDown(vkStopReplay);
+
+  // 分片等待：最多 100ms 一片，期间随时响应中止
+  Future<bool> waitAbortable(int ms) async {
+    var remaining = ms;
+    while (remaining > 0) {
+      final step = remaining > 100 ? 100 : remaining;
+      await Future<void>.delayed(Duration(milliseconds: step));
+      remaining -= step;
+      if (abortRequested()) return true;
+    }
+    return false;
+  }
+
+  final rounds = loopCount.clamp(1, 9999);
+  outer:
+  for (var round = 0; round < rounds; round++) {
+    var prevOffset = 0;
+    for (final a in actions) {
+      if (abortRequested()) break outer;
+      final wait = a.offsetMs - prevOffset;
+      if (wait > 0) {
+        aborted = await waitAbortable(wait);
+        if (aborted) break outer;
+      }
+      prevOffset = a.offsetMs;
+      switch (a) {
+        case RecClick c:
+          await automation.click(
+            c.x,
+            c.y,
+            button: switch (c.button) {
+              'right' => MouseButton.right,
+              'middle' => MouseButton.middle,
+              _ => MouseButton.left,
+            },
+            count: c.count,
+          );
+        case RecSwipe w:
+          await automation.swipe(
+            w.x1,
+            w.y1,
+            w.x2,
+            w.y2,
+            durationMs: w.durationMs,
+          );
+        case RecLongPress p:
+          await automation.longPress(p.x, p.y, durationMs: p.durationMs);
+        case RecScroll s:
+          await automation.scrollWheel(s.x, s.y, dy: s.dy, dx: s.dx);
+        case RecKey k:
+          await automation.keyTap(
+            k.vkCode,
+            durationMs: k.durationMs,
+            extended: k.extended,
+          );
+        case RecCombo c:
+          // 组合键：按下所有键（键间 20ms 确保修饰键生效）→ 按住 → 逆序抬起
+          final pressed = <int>[];
+          for (var i = 0; i < c.vkCodes.length; i++) {
+            final vk = c.vkCodes[i];
+            final ext = i < c.extendeds.length && c.extendeds[i];
+            await automation.keyDown(vk, extended: ext);
+            pressed.add(vk);
+            if (abortRequested()) break;
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+          }
+          var held = c.durationMs - pressed.length * 20;
+          if (held > 0) {
+            if (await waitAbortable(held)) {
+              // 中止也要抬起已按下的键，避免目标窗口卡键
+              for (final vk in pressed.reversed) {
+                await automation.keyUp(vk);
+              }
+              return;
+            }
+          }
+          for (var i = c.vkCodes.length - 1; i >= 0; i--) {
+            final ext = i < c.extendeds.length && c.extendeds[i];
+            await automation.keyUp(c.vkCodes[i], extended: ext);
+          }
+      }
+      if (abortRequested()) break outer;
+    }
+    // 轮间隔（最后一轮之后不再等）
+    if (round < rounds - 1 && loopIntervalMs > 0) {
+      aborted = await waitAbortable(loopIntervalMs);
+      if (aborted) break;
     }
   }
+}
+
+/// 动作摘要文本（录制页与动作编辑页共用）
+String describeAction(RecordedAction a) => switch (a) {
+  RecClick c =>
+    '点击 (${c.x}, ${c.y}) ×${c.count}${c.button == 'right' ? ' 右键' : ''}${c.button == 'middle' ? ' 中键' : ''}',
+  RecSwipe w =>
+    '滑动 (${w.x1}, ${w.y1}) → (${w.x2}, ${w.y2}) ${w.durationMs}ms',
+  RecLongPress p => '长按 (${p.x}, ${p.y}) ${p.durationMs}ms',
+  RecScroll s => _scrollText(s),
+  RecKey k =>
+    '按键 [${vkName(k.vkCode)}] ${k.durationMs}ms${k.extended ? ' (扩展键)' : ''}',
+  RecCombo c =>
+    '组合键 [${c.vkCodes.map(vkName).join(' + ')}] ${c.durationMs}ms',
+};
+
+String _scrollText(RecScroll s) {
+  if (s.dy != 0) {
+    final up = s.dy > 0;
+    final cells = (s.dy.abs() / 120).toStringAsFixed(1);
+    return '滚轮 (${s.x}, ${s.y}) ${up ? '↑' : '↓'} $cells 格';
+  }
+  final right = s.dx > 0;
+  final cells = (s.dx.abs() / 120).toStringAsFixed(1);
+  return '滚轮 (${s.x}, ${s.y}) ${right ? '→' : '←'} $cells 格';
 }
 
 /// 虚拟键显示名称（UI 展示用）

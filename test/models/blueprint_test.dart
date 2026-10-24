@@ -146,5 +146,47 @@ void main() {
       s.removeNode('b');
       expect(s.edges, isEmpty);
     });
+
+    test('组合键 RecCombo 序列化 round-trip', () {
+      final rec = Recording(
+        id: 'r2',
+        name: '组合键录制',
+        createdAt: DateTime(2026, 1, 1),
+        actions: const [
+          RecCombo(0, [0x11, 0x43],
+              extendeds: [false, false], durationMs: 500),
+        ],
+      );
+      final json = jsonEncode(rec.toJson());
+      final restored = Recording.fromJson(jsonDecode(json) as Map<String, dynamic>);
+      expect(restored.actions.length, 1);
+      final combo = restored.actions.single as RecCombo;
+      expect(combo.vkCodes, [0x11, 0x43]);
+      expect(combo.durationMs, 500);
+      expect(combo.offsetMs, 0);
+    });
+
+    test('旧格式（重叠独立 RecKey）加载时自动合并为 RecCombo', () {
+      const raw = '''
+{
+  "id": "r3",
+  "name": "旧录制",
+  "createdAt": "2026-01-01T10:00:00.000",
+  "actions": [
+    {"kind": "RecKey", "offsetMs": 0, "vkCode": 17, "durationMs": 500, "extended": false},
+    {"kind": "RecKey", "offsetMs": 100, "vkCode": 67, "durationMs": 60, "extended": false},
+    {"kind": "RecClick", "offsetMs": 800, "x": 10, "y": 20, "count": 1, "button": "left"}
+  ]
+}
+''';
+      final restored =
+          Recording.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      expect(restored.actions.length, 2);
+      final combo = restored.actions[0] as RecCombo;
+      expect(combo.vkCodes, [17, 67]); // Ctrl + C
+      expect(combo.offsetMs, 0);
+      expect(combo.durationMs, 500); // 0+500 与 100+60 取最大
+      expect(restored.actions[1], isA<RecClick>());
+    });
   });
 }

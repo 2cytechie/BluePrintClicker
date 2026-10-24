@@ -62,6 +62,12 @@ abstract interface class PlatformAutomation {
   /// 按下并抬起虚拟键（模拟一次按键，按住 durationMs 毫秒）
   Future<void> keyTap(int vkCode, {int durationMs = 60, bool extended = false});
 
+  /// 按下虚拟键不抬起（组合键回放用；必须与 [keyUp] 成对调用）
+  Future<void> keyDown(int vkCode, {bool extended = false});
+
+  /// 抬起虚拟键（与 [keyDown] 成对）
+  Future<void> keyUp(int vkCode, {bool extended = false});
+
   /// 截屏（全屏或区域）
   Future<ScreenCapture> capture({RectPx? region});
 
@@ -117,6 +123,10 @@ class UnsupportedPlatformAutomation implements PlatformAutomation {
     int durationMs = 60,
     bool extended = false,
   }) => _deny();
+  @override
+  Future<void> keyDown(int vkCode, {bool extended = false}) => _deny();
+  @override
+  Future<void> keyUp(int vkCode, {bool extended = false}) => _deny();
   @override
   Future<ScreenCapture> capture({RectPx? region}) async {
     throw UnsupportedError(unsupportedReason!);

@@ -338,3 +338,157 @@ bool uninstallMouseHook(int handle) => _unhookWindowsHookEx(handle) != 0;
 
 int callNextHook(int nCode, int wParam, int lParam) =>
     _callNextHookEx(0, nCode, wParam, lParam);
+
+// ---- 分层窗口（屏幕标记图标用：透明置顶点击穿透）----
+
+const int wsPopup = 0x80000000;
+const int wsExLayered = 0x00080000;
+const int wsExTransparent = 0x00000020; // 点击穿透
+const int wsExToolwindow = 0x00000080; // 不进任务栏/Alt+Tab
+const int wsExTopmost = 0x00000008;
+const int wsExNoactivate = 0x08000000; // 不抢焦点
+const int ulwAlpha = 2;
+const int acSrcOver = 0;
+const int acSrcAlpha = 1; // 逐像素 Alpha
+const int swShowNa = 8; // 显示但不激活
+const int swpNoSize = 0x0001;
+const int swpNoActivate = 0x0010;
+const int swpTopmost = 0xFFFF; // HWND_TOPMOST
+const int dibRgbColors = 0;
+
+final class WNDCLASSEXW extends Struct {
+  @Uint32() external int cbSize;
+  @Uint32() external int style;
+  external Pointer<NativeFunction<IntPtr Function(IntPtr, Uint32, IntPtr, IntPtr)>> lpfnWndProc;
+  @Int32() external int cbClsExtra;
+  @Int32() external int cbWndExtra;
+  @IntPtr() external int hInstance;
+  @IntPtr() external int hIcon;
+  @IntPtr() external int hCursor;
+  @IntPtr() external int hbrBackground;
+  external Pointer<Utf16> lpszMenuName;
+  external Pointer<Utf16> lpszClassName;
+  @IntPtr() external int hIconSm; // HICON 小图标（0 = 默认）
+}
+
+typedef _RegisterClassExWC = Uint16 Function(Pointer<WNDCLASSEXW>);
+typedef _RegisterClassExWDart = int Function(Pointer<WNDCLASSEXW>);
+final _registerClassEx =
+    user32Lib.lookupFunction<_RegisterClassExWC, _RegisterClassExWDart>('RegisterClassExW');
+
+typedef _UnregisterClassWC = Int32 Function(Pointer<Utf16>, IntPtr);
+typedef _UnregisterClassWDart = int Function(Pointer<Utf16>, int);
+final _unregisterClass =
+    user32Lib.lookupFunction<_UnregisterClassWC, _UnregisterClassWDart>('UnregisterClassW');
+
+/// DefWindowProcW 函数地址（作窗口类默认 WNDPROC）
+final Pointer<NativeFunction<IntPtr Function(IntPtr, Uint32, IntPtr, IntPtr)>> defWindowProcPtr =
+    user32Lib.lookup<NativeFunction<IntPtr Function(IntPtr, Uint32, IntPtr, IntPtr)>>(
+        'DefWindowProcW');
+
+typedef _CreateWindowExWC = IntPtr Function(
+    Uint32, Pointer<Utf16>, Pointer<Utf16>, Uint32,
+    Int32, Int32, Int32, Int32,
+    IntPtr, IntPtr, IntPtr, IntPtr);
+typedef _CreateWindowExWDart = int Function(
+    int, Pointer<Utf16>, Pointer<Utf16>, int,
+    int, int, int, int,
+    int, int, int, int);
+final _createWindowEx =
+    user32Lib.lookupFunction<_CreateWindowExWC, _CreateWindowExWDart>('CreateWindowExW');
+
+typedef _DestroyWindowC = Int32 Function(IntPtr);
+typedef _DestroyWindowDart = int Function(int);
+final _destroyWindow =
+    user32Lib.lookupFunction<_DestroyWindowC, _DestroyWindowDart>('DestroyWindow');
+
+typedef _SetWindowPosC = Int32 Function(IntPtr, IntPtr,
+    Int32, Int32, Int32, Int32, Uint32);
+typedef _SetWindowPosDart = int Function(int, int, int, int, int, int, int);
+final _setWindowPos =
+    user32Lib.lookupFunction<_SetWindowPosC, _SetWindowPosDart>('SetWindowPos');
+
+typedef _GetModuleHandleWC = IntPtr Function(Pointer<Utf16>);
+typedef _GetModuleHandleWDart = int Function(Pointer<Utf16>);
+// GetModuleHandleW 属于 kernel32.dll（不是 user32）
+final _getModuleHandle = DynamicLibrary.open('kernel32.dll')
+    .lookupFunction<_GetModuleHandleWC, _GetModuleHandleWDart>('GetModuleHandleW');
+
+typedef _UpdateLayeredWindowC = Int32 Function(
+    IntPtr, IntPtr, Pointer<Int32>, Pointer<Int32>,
+    IntPtr, Pointer<Int32>, Int32, Pointer<Uint8>, Uint32);
+typedef _UpdateLayeredWindowDart = int Function(
+    int, int, Pointer<Int32>, Pointer<Int32>,
+    int, Pointer<Int32>, int, Pointer<Uint8>, int);
+final _updateLayeredWindow = user32Lib
+    .lookupFunction<_UpdateLayeredWindowC, _UpdateLayeredWindowDart>('UpdateLayeredWindow');
+
+/// 进程实例句柄（注册窗口类用）
+int getModuleHandle() => _getModuleHandle(nullptr);
+
+/// 注册窗口类（进程内一般只调一次）；返回是否成功。
+/// WNDPROC 固定为 DefWindowProcW——分层窗口跳过 WM_PAINT，无需自定义消息处理。
+bool registerMarkerWindowClass(String className) {
+  final name = className.toNativeUtf16();
+  final wc = calloc<WNDCLASSEXW>();
+  wc.ref.cbSize = sizeOf<WNDCLASSEXW>();
+  wc.ref.lpfnWndProc = defWindowProcPtr;
+  wc.ref.hInstance = getModuleHandle();
+  wc.ref.lpszClassName = name;
+  final atom = _registerClassEx(wc);
+  calloc.free(wc);
+  calloc.free(name);
+  return atom != 0;
+}
+
+void unregisterMarkerWindowClass(String className) {
+  final name = className.toNativeUtf16();
+  _unregisterClass(name, getModuleHandle());
+  calloc.free(name);
+}
+
+/// 创建分层置顶穿透小窗口；返回 hwnd（失败 0）。
+int createLayeredWindow({
+  required String className,
+  required int exStyle,
+  required int x,
+  required int y,
+  required int w,
+  required int h,
+}) {
+  final cls = className.toNativeUtf16();
+  final title = ''.toNativeUtf16();
+  final hwnd = _createWindowEx(
+    exStyle, cls, title, wsPopup,
+    x, y, w, h,
+    0, // hWndParent = 0（顶层窗口）
+    0, // hMenu
+    getModuleHandle(),
+    0, // lpParam
+  );
+  calloc.free(cls);
+  calloc.free(title);
+  return hwnd;
+}
+
+bool destroyLayeredWindow(int hwnd) => _destroyWindow(hwnd) != 0;
+void showWindowNa(int hwnd) => _showWindow(hwnd, swShowNa);
+bool moveWindowPos(int hwnd, int x, int y) =>
+    _setWindowPos(hwnd, 0, x, y, 0, 0, swpNoSize | swpNoActivate) != 0;
+
+/// UpdateLayeredWindow：把预乘 BGRA 位图设为窗口内容（32bpp、逐像素 Alpha）。
+/// [pptDst]/[psize] 为新窗口位置/尺寸；[hdcSrc] 已选入 [hbmp]；[pblend] 由 [blendAlpha] 构造。
+bool updateLayeredWindowContent(
+  int hwnd,
+  int hdcScreen, // 传 0 即可（ULW 不需要屏幕 DC）
+  Pointer<Int32> pptDst,
+  Pointer<Int32> psize,
+  int hdcSrc,
+  Pointer<Int32> pptSrc,
+  int crKey,
+  Pointer<Uint8> pblend,
+  int dwFlags,
+) {
+  return _updateLayeredWindow(hwnd, hdcScreen, pptDst, psize, hdcSrc, pptSrc,
+          crKey, pblend, dwFlags) != 0;
+}

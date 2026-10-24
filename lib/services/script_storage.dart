@@ -139,6 +139,28 @@ class RecordingStorage {
     final f = File('${d.path}/$id.json');
     if (await f.exists()) await f.delete();
   }
+
+  /// 导出到用户选择的文件（file_selector 由 UI 层提供目标路径）
+  Future<String> exportToString(Recording r) =>
+      Future.value(const JsonEncoder.withIndent('  ').convert(r.toJson()));
+
+  /// 从 JSON 字符串导入：重新生成 id 避免覆盖已有录制；名称为空用 [fallbackName]
+  Future<Recording> importFromString(String json, {String? fallbackName}) async {
+    final parsed = Recording.fromJson(jsonDecode(json) as Map<String, dynamic>);
+    final name = parsed.name.trim().isNotEmpty
+        ? parsed.name
+        : (fallbackName ?? '').trim().isNotEmpty
+        ? fallbackName!
+        : '导入的录制';
+    final r = Recording(
+      id: 'r_${DateTime.now().millisecondsSinceEpoch}',
+      name: name,
+      createdAt: parsed.createdAt,
+      actions: parsed.actions,
+    );
+    await save(r);
+    return r;
+  }
 }
 
 /// 数据存取节点的持久化 KV 存储：应用文档目录/data_store.json

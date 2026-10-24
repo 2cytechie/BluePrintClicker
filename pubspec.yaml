@@ -40,7 +40,7 @@ dependencies:
   file_selector: ^1.1.0
   shared_preferences: ^2.5.5
   winrt_ocr_flutter: ^0.1.0
-  fl_nodes_v2: ^1.0.0
+  fl_nodes_v2: ^1.4.0
   opencv_dart: ^2.2.2
 
 dev_dependencies:

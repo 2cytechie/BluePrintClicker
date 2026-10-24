@@ -1,13 +1,16 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme.dart';
 import '../models/blueprint.dart';
-import '../platform/recording.dart' show replayActions, vkName;
+import '../platform/recording.dart' show replayActions, describeAction;
 import '../state/providers.dart';
 import 'common.dart';
+import 'recording_editor_page.dart';
 
 /// 录制与回放页
 class RecordingPage extends ConsumerStatefulWidget {
@@ -65,7 +68,8 @@ class _RecordingPageState extends ConsumerState<RecordingPage> {
     final actions = service.stop();
     final now = DateTime.now();
     String two(int v) => v.toString().padLeft(2, '0');
-    final defaultName = '录制 ${two(now.hour)}:${two(now.minute)}:${two(now.second)}';
+    final defaultName =
+        '录制 ${two(now.hour)}:${two(now.minute)}:${two(now.second)}';
     final name = await _promptName(initial: defaultName, title: '保存录制');
     final r = Recording(
       id: 'r_${now.millisecondsSinceEpoch}',
@@ -83,7 +87,10 @@ class _RecordingPageState extends ConsumerState<RecordingPage> {
   }
 
   /// 命名输入对话框；返回输入的名称（取消/留空返回空串，由调用方使用默认名）
-  Future<String> _promptName({required String initial, required String title}) async {
+  Future<String> _promptName({
+    required String initial,
+    required String title,
+  }) async {
     final controller = TextEditingController(text: initial);
     final result = await showDialog<String>(
       context: context,
@@ -96,15 +103,21 @@ class _RecordingPageState extends ConsumerState<RecordingPage> {
           onSubmitted: (v) => Navigator.pop(ctx, v),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, ''), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('确定')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ''),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('确定'),
+          ),
         ],
       ),
     );
     return (result ?? '').trim();
   }
 
-  /// 回放动作序列（按录制时的偏移间隔执行）
+  /// 回放动作序列（按录制时的偏移间隔执行；F10 随时中止）
   Future<void> _replay(List<RecordedAction> actions) async {
     final automation = ref.read(automationProvider);
     if (!automation.isSupported) {
@@ -123,27 +136,7 @@ class _RecordingPageState extends ConsumerState<RecordingPage> {
     }
   }
 
-  String _actionLabel(RecordedAction a) => switch (a) {
-    RecClick c =>
-      '点击 (${c.x}, ${c.y}) ×${c.count}${c.button == 'right' ? ' 右键' : ''}',
-    RecSwipe w =>
-      '滑动 (${w.x1}, ${w.y1}) → (${w.x2}, ${w.y2}) ${w.durationMs}ms',
-    RecLongPress p => '长按 (${p.x}, ${p.y}) ${p.durationMs}ms',
-    RecScroll s => _scrollLabel(s),
-    RecKey k =>
-      '按键 [${vkName(k.vkCode)}] ${k.durationMs}ms${k.extended ? ' (扩展键)' : ''}',
-  };
-
-  String _scrollLabel(RecScroll s) {
-    if (s.dy != 0) {
-      final up = s.dy > 0;
-      final cells = (s.dy.abs() / 120).toStringAsFixed(1);
-      return '滚轮 (${s.x}, ${s.y}) ${up ? '↑' : '↓'} $cells 格';
-    }
-    final right = s.dx > 0;
-    final cells = (s.dx.abs() / 120).toStringAsFixed(1);
-    return '滚轮 (${s.x}, ${s.y}) ${right ? '→' : '←'} $cells 格';
-  }
+  String _actionLabel(RecordedAction a) => describeAction(a);
 
   @override
   Widget build(BuildContext context) {
@@ -211,8 +204,9 @@ class _RecordingPageState extends ConsumerState<RecordingPage> {
                 children: [
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed:
-                          _replaying ? null : () => _replay(_lastRecording!.actions),
+                      onPressed: _replaying
+                          ? null
+                          : () => _replay(_lastRecording!.actions),
                       icon: const Icon(Icons.play_arrow_rounded, size: 18),
                       label: const Text('立即回放'),
                     ),
@@ -235,7 +229,10 @@ class _RecordingPageState extends ConsumerState<RecordingPage> {
               title: '录制与回放',
               trailing: [
                 if (_replaying)
-                  const StatusBadge(text: '回放中', color: AppColors.nodeLogic),
+                  const StatusBadge(
+                    text: '回放中 · F10 中止',
+                    color: AppColors.nodeLogic,
+                  ),
               ],
             ),
             Expanded(
@@ -244,16 +241,17 @@ class _RecordingPageState extends ConsumerState<RecordingPage> {
                   final twoColumn = constraints.maxWidth >= 900;
                   if (twoColumn) {
                     return Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Expanded(
+                        SizedBox(
+                          width: 500,
                           child: ListView(
                             padding: const EdgeInsets.only(right: 16),
                             children: leftCards,
                           ),
                         ),
                         const SizedBox(width: 16),
-                        const SizedBox(width: 380, child: _HistoryPane()),
+                        Expanded(child: _HistoryPane()),
                       ],
                     );
                   }
@@ -281,6 +279,30 @@ class _HistoryPane extends ConsumerWidget {
   final bool asCard;
 
   const _HistoryPane({this.asCard = false});
+
+  /// 从 JSON 文件导入录制
+  Future<void> _importRecording(BuildContext context, WidgetRef ref) async {
+    const typeGroup = XTypeGroup(label: 'JSON 录制文件', extensions: ['json']);
+    final f = await openFile(acceptedTypeGroups: [typeGroup]);
+    if (f == null || !context.mounted) return;
+    try {
+      final text = await f.readAsString();
+      final fallback = f.name.replaceAll(RegExp(r'\.json$'), '');
+      await ref
+          .read(recordingStorageProvider)
+          .importFromString(text, fallbackName: fallback);
+      ref.invalidate(recordingsProvider);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('导入成功')));
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('导入失败：文件不是有效的录制 JSON')));
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -321,31 +343,35 @@ class _HistoryPane extends ConsumerWidget {
       },
     );
 
+    final importBtn = IconButton(
+      icon: const Icon(Icons.file_download_outlined, size: 18),
+      color: AppColors.inkSecondary,
+      tooltip: '导入录制 JSON',
+      onPressed: () => _importRecording(context, ref),
+    );
+
     if (asCard) {
       return SectionCard(
         title: '历史记录',
         icon: Icons.history_rounded,
+        trailing: importBtn,
         child: content,
       );
     }
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.moonWhite,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(
-                Icons.history_rounded,
-                size: 18,
-                color: AppColors.primaryDeep,
-              ),
-              SizedBox(width: 6),
-              Text(
+              const Icon(Icons.history_rounded, size: 18, color: Colors.white),
+              const SizedBox(width: 6),
+              const Text(
                 '历史记录',
                 style: TextStyle(
                   fontSize: 15,
@@ -353,6 +379,8 @@ class _HistoryPane extends ConsumerWidget {
                   color: AppColors.ink,
                 ),
               ),
+              const Spacer(),
+              importBtn,
             ],
           ),
           const SizedBox(height: 12),
@@ -387,6 +415,57 @@ class _HistoryTileState extends ConsumerState<_HistoryTile> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  /// 点击名称进入动作编辑页；返回后刷新列表（编辑页即时保存）
+  Future<void> _openEditor(BuildContext context) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => RecordingEditorPage(recording: recording),
+      ),
+    );
+    ref.invalidate(recordingsProvider);
+  }
+
+  /// 导出为 JSON 文件
+  Future<void> _export(BuildContext context, WidgetRef ref) async {
+    final location = await getSaveLocation(
+      suggestedName: '${recording.name}.json',
+      acceptedTypeGroups: const [
+        XTypeGroup(label: 'JSON 录制文件', extensions: ['json']),
+      ],
+    );
+    final path = location?.path;
+    if (path == null || path.isEmpty || !context.mounted) return;
+    try {
+      final text = await ref
+          .read(recordingStorageProvider)
+          .exportToString(recording);
+      await File(path).writeAsString(text);
+      if (!context.mounted) return;
+      _toast(context, '已导出录制文件');
+    } catch (_) {
+      if (!context.mounted) return;
+      _toast(context, '导出失败');
+    }
+  }
+
+  /// 紧凑操作按钮（减少占用宽度，给名称留空间）
+  Widget _btn(
+    IconData icon,
+    String tooltip,
+    VoidCallback? onPressed, {
+    Color? color,
+  }) {
+    return IconButton(
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+      padding: const EdgeInsets.all(5),
+      icon: Icon(icon, size: 18),
+      color: color ?? AppColors.inkSecondary,
+      tooltip: tooltip,
+      onPressed: onPressed,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final r = recording;
@@ -399,58 +478,77 @@ class _HistoryTileState extends ConsumerState<_HistoryTile> {
               const Icon(
                 Icons.videocam_outlined,
                 size: 20,
-                color: AppColors.primary,
+                color: AppColors.peacock,
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      r.name,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.ink,
+                child: Tooltip(
+                  message: '点击名称编辑动作',
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: () => _openEditor(context),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            r.name,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${_fmtTime(r.createdAt)} · ${r.actions.length} 个动作',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.inkSecondary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${_fmtTime(r.createdAt)} · ${r.actions.length} 个动作',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.inkSecondary,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
-              IconButton(
-                icon: Icon(
-                  Icons.expand_more_rounded,
-                  size: 20,
-                  color: _expanded ? AppColors.primary : AppColors.inkSecondary,
-                ),
-                tooltip: '查看',
-                onPressed: () => setState(() => _expanded = !_expanded),
+              _btn(
+                _expanded
+                    ? Icons.expand_less_rounded
+                    : Icons.expand_more_rounded,
+                _expanded ? '收起' : '查看',
+                () => setState(() => _expanded = !_expanded),
+                color: _expanded ? AppColors.peacock : AppColors.inkSecondary,
               ),
-              IconButton(
-                icon: const Icon(Icons.play_arrow_rounded, size: 20),
-                color: AppColors.primary,
-                tooltip: '回放',
-                onPressed: () => _replayRecording(context, ref),
+              _btn(
+                Icons.edit_outlined,
+                '编辑动作',
+                () => _openEditor(context),
+                color: AppColors.peacock,
               ),
-              IconButton(
-                icon: const Icon(Icons.drive_file_rename_outline_rounded, size: 20),
-                color: AppColors.inkSecondary,
-                tooltip: '重命名',
-                onPressed: () => _rename(context, ref),
+              _btn(
+                Icons.play_arrow_rounded,
+                '回放',
+                () => _replayRecording(context, ref),
+                color: AppColors.peacock,
               ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline_rounded, size: 20),
+              _btn(
+                Icons.ios_share_rounded,
+                '导出 JSON',
+                () => _export(context, ref),
+              ),
+              _btn(
+                Icons.drive_file_rename_outline_rounded,
+                '重命名',
+                () => _rename(context, ref),
+              ),
+              _btn(
+                Icons.delete_outline_rounded,
+                '删除',
+                () => _delete(context, ref),
                 color: AppColors.danger,
-                tooltip: '删除',
-                onPressed: () => _delete(context, ref),
               ),
             ],
           ),
@@ -463,7 +561,7 @@ class _HistoryTileState extends ConsumerState<_HistoryTile> {
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: AppColors.bg,
+              color: AppColors.ivory,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Column(
@@ -493,27 +591,7 @@ class _HistoryTileState extends ConsumerState<_HistoryTile> {
     );
   }
 
-  String _label(RecordedAction a) => switch (a) {
-    RecClick c =>
-      '点击 (${c.x}, ${c.y}) ×${c.count}${c.button == 'right' ? ' 右键' : ''}',
-    RecSwipe w =>
-      '滑动 (${w.x1}, ${w.y1}) → (${w.x2}, ${w.y2}) ${w.durationMs}ms',
-    RecLongPress p => '长按 (${p.x}, ${p.y}) ${p.durationMs}ms',
-    RecScroll s => _scrollLabel(s),
-    RecKey k =>
-      '按键 [${vkName(k.vkCode)}] ${k.durationMs}ms${k.extended ? ' (扩展键)' : ''}',
-  };
-
-  String _scrollLabel(RecScroll s) {
-    if (s.dy != 0) {
-      final up = s.dy > 0;
-      final cells = (s.dy.abs() / 120).toStringAsFixed(1);
-      return '滚轮 (${s.x}, ${s.y}) ${up ? '↑' : '↓'} $cells 格';
-    }
-    final right = s.dx > 0;
-    final cells = (s.dx.abs() / 120).toStringAsFixed(1);
-    return '滚轮 (${s.x}, ${s.y}) ${right ? '→' : '←'} $cells 格';
-  }
+  String _label(RecordedAction a) => describeAction(a);
 
   /// 重命名录制（文件名是 id，改名后直接覆盖保存）
   Future<void> _rename(BuildContext context, WidgetRef ref) async {
@@ -529,7 +607,10 @@ class _HistoryTileState extends ConsumerState<_HistoryTile> {
           onSubmitted: (v) => Navigator.pop(ctx, v),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text),
             child: const Text('确定'),
@@ -550,7 +631,7 @@ class _HistoryTileState extends ConsumerState<_HistoryTile> {
       _toast(context, automation.unsupportedReason ?? '当前平台暂不支持回放');
       return;
     }
-    // 回放为耗时操作，逐个执行动作（间隔按录制偏移差）
+    // 回放为耗时操作，逐个执行动作（间隔按录制偏移差；F10 随时中止）
     try {
       await replayActions(automation, recording.actions);
       if (context.mounted) _toast(context, '回放完成');

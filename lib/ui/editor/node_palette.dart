@@ -41,7 +41,7 @@ class NodePalette extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
-      color: AppColors.surface,
+      color: AppColors.moonWhite,
       child: ListView(
         padding: const EdgeInsets.only(bottom: 12),
         children: [

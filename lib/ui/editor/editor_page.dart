@@ -168,7 +168,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
   void _showPaletteSheet() {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.surface,
+      backgroundColor: AppColors.moonWhite,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -187,7 +187,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.ivory,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -261,7 +261,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
                           runningNodeId: runningNodeId,
                         ),
                         theme: fl.NodeEditorTheme.dark(
-                          accent: AppColors.primary,
+                          accent: AppColors.peacock,
                         ).copyWith(background: AppColors.canvasBg),
                         onConnectionTap: _confirmDeleteConnection,
                       );
@@ -336,7 +336,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
     String currentNodeTitle,
   ) {
     return Container(
-      color: AppColors.surface,
+      color: AppColors.moonWhite,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
@@ -351,7 +351,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
           ),
           const Icon(
             Icons.account_tree_rounded,
-            color: AppColors.primary,
+            color: AppColors.peacock,
             size: 20,
           ),
           const SizedBox(width: 8),
@@ -379,14 +379,14 @@ class _EditorPageState extends ConsumerState<EditorPage> {
                         Icon(
                           Icons.fiber_manual_record,
                           size: 10,
-                          color: AppColors.primary,
+                          color: AppColors.peacock,
                         ),
                         SizedBox(width: 4),
                         Text(
                           '未保存',
                           style: TextStyle(
                             fontSize: 12,
-                            color: AppColors.primary,
+                            color: AppColors.peacock,
                           ),
                         ),
                       ],
@@ -455,7 +455,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
             onPressed: () => setState(() => _showLogs = !_showLogs),
             icon: Icon(
               Icons.article_outlined,
-              color: _showLogs ? AppColors.primary : AppColors.inkSecondary,
+              color: _showLogs ? AppColors.peacock : AppColors.inkSecondary,
             ),
           ),
         ],
@@ -527,7 +527,7 @@ class _PickBanner extends ConsumerWidget {
               const Icon(
                 Icons.my_location_rounded,
                 size: 15,
-                color: AppColors.primaryDeep,
+                color: AppColors.peacock,
               ),
               const SizedBox(width: 8),
               Text(
@@ -535,13 +535,13 @@ class _PickBanner extends ConsumerWidget {
                 ' · 左/右/中键确认 · Esc 取消',
                 style: const TextStyle(
                   fontSize: 12,
-                  color: AppColors.surface,
+                  color: AppColors.moonWhite,
                 ),
               ),
               if (pick.target?.buttonKey != null)
                 const Text(
                   ' · 按键随点击记录',
-                  style: TextStyle(fontSize: 12, color: AppColors.primaryDeep),
+                  style: TextStyle(fontSize: 12, color: AppColors.peacock),
                 ),
             ],
           ),
@@ -599,7 +599,7 @@ class _LogsPanelState extends ConsumerState<_LogsPanel> {
           Container(
             height: 36,
             padding: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: const BoxDecoration(color: AppColors.primaryDeep),
+            decoration: const BoxDecoration(color: AppColors.peacockDeep),
             child: Row(
               children: [
                 const Icon(

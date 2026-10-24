@@ -1,45 +1,29 @@
 import 'package:flutter/material.dart';
 
-/// 应用配色方案（取自用户提供的色卡，深色主题）
-/// 深海夜蓝 #28314E 背景 | 柔空蓝 #658AE4 主色 | 薄荷冰青 #A1FEEF 强调色
+/// 应用配色方案（取自用户提供的色卡 · 深海夜蓝暗色主题）
+/// 深海夜蓝 #28314E 页面背景 | 柔空蓝 #658AE4 按钮背景/主强调 | 薄荷冰青 #A1FEEF 高亮色
 abstract final class AppColors {
-  // —— 背景层次（深海夜蓝衍生） ——
-  static const bg = Color(0xFF28314E); // 页面背景（深海夜蓝）
-  static const surface = Color(0xFF333F63); // 卡片/面板底色（提亮一档）
-  static const inputFill = Color(0xFF3B4870); // 输入框填充（再提亮一档）
-  static const canvasBg = Color(0xFF222B47); // 画布背景（压暗一档）
+  static const ivory = Color(0xFF28314E); // 页面背景（深海夜蓝）
+  static const moonWhite = Color(0xFF333D60); // 卡片/面板底色（夜蓝提亮一档）
+  static const peacock = Color(0xFF658AE4); // 主强调色（柔空蓝 · 按钮背景）
+  static const peacockDark = Color(0xFF5471CF); // 悬停/按下（柔空蓝加深）
+  static const peacockDeep = Color(0xFF46609F); // 深强调（柔空蓝再加深）
+  static const ink = Color(0xFFECF0FA); // 主文字（浅）
+  static const inkSecondary = Color(0xFFA9B4D6); // 次级文字
+  static const outline = Color(0xFF46527A); // 描边
+  static const canvasBg = Color(0xFF212942); // 画布/日志背景（夜蓝加深一档）
+  static const danger = Color(0xFFE0685A); // 危险操作（珊瑚红提亮适配暗底）
+  static const success = Color(0xFF4CC79A); // 成功状态（青绿提亮适配暗底）
 
-  // —— 主题色：柔空蓝 ——
-  static const primary = Color(0xFF658AE4); // 主强调色（柔空蓝）
-  static const primaryDark = Color(0xFF5473D6); // 悬停/按下
-  static const primaryDeep = Color(0xFF425FC4); // 深强调（亮底上的图标/文字）
-
-  // —— 主题色：薄荷冰青 ——
-  static const mint = Color(0xFFA1FEEF); // 强调/激活（滑块、成功态点缀）
-
-  /// 亮色品牌底（柔空蓝/薄荷冰青/危险砖红）上的前景文字：深海军蓝
-  static const onTint = Color(0xFF1A2542);
-
-  // —— 文字 ——
-  static const ink = Color(0xFFE9EEFB); // 主文字（近白）
-  static const inkSecondary = Color(0xFF9BA9CC); // 次级文字（浅蓝灰）
-
-  // —— 线条 ——
-  static const outline = Color(0xFF47527C); // 描边/分隔
-
-  // —— 功能色 ——
-  static const danger = Color(0xFFE8795F); // 危险操作（砖红提亮适配深底）
-  static const success = Color(0xFF5FE0C0); // 成功状态（薄荷青绿，与薄荷冰青协调）
-
-  /// 五类节点辅助色（蓝—青光谱，自柔空蓝/薄荷冰青衍生）
+  /// 五类节点辅助色（深海夜蓝色系协调衍生，均配白色节点标题文字）
   static const nodeInteraction = Color(0xFF658AE4); // 交互：柔空蓝
-  static const nodeMedia = Color(0xFF8FB0F2); // 媒体：浅空蓝
-  static const nodeLogic = Color(0xFF5568CE); // 逻辑：雾蓝紫
-  static const nodeData = Color(0xFFA1FEEF); // 数据：薄荷冰青
-  static const nodeScript = Color(0xFF5ED6C4); // 脚本：青玉薄荷
+  static const nodeMedia = Color(0xFF3FA0D6); // 媒体：海青
+  static const nodeLogic = Color(0xFF7E93C2); // 逻辑：雾蓝
+  static const nodeData = Color(0xFF2FA98A); // 数据：青玉
+  static const nodeScript = Color(0xFF9A7ED8); // 脚本：岩紫
 
-  /// 执行流连线（柔空蓝）与数据连线（薄荷冰青）
-  static const execWire = primary;
+  /// 执行流连线（柔空蓝）与数据连线（青玉虚线）
+  static const execWire = peacock;
   static const dataWire = nodeData;
 }
 
@@ -48,57 +32,53 @@ ThemeData buildAppTheme() {
     useMaterial3: true,
     brightness: Brightness.dark,
     colorScheme: ColorScheme.dark(
-      primary: AppColors.primary,
-      onPrimary: AppColors.onTint,
-      primaryContainer: AppColors.primaryDeep,
-      onPrimaryContainer: AppColors.ink,
-      secondary: AppColors.mint,
-      onSecondary: AppColors.onTint,
-      surface: AppColors.bg,
+      primary: AppColors.peacock,
+      onPrimary: Colors.white,
+      primaryContainer: Colors.white,
+      onPrimaryContainer: AppColors.ivory,
+      secondary: AppColors.nodeData,
+      onSecondary: Colors.white,
+      surface: AppColors.ivory,
       onSurface: AppColors.ink,
-      surfaceContainerHighest: AppColors.surface,
+      surfaceContainerHighest: AppColors.moonWhite,
       onSurfaceVariant: AppColors.inkSecondary,
       outline: AppColors.outline,
       error: AppColors.danger,
     ),
-    scaffoldBackgroundColor: AppColors.bg,
+    scaffoldBackgroundColor: AppColors.ivory,
   );
   return base.copyWith(
-    colorScheme: base.colorScheme.copyWith(
-      surfaceContainerHigh: AppColors.surface,
-      surfaceContainerHighest: AppColors.surface,
-    ),
     appBarTheme: const AppBarTheme(
-      backgroundColor: AppColors.bg,
+      backgroundColor: AppColors.ivory,
       foregroundColor: AppColors.ink,
       elevation: 0,
       centerTitle: false,
     ),
     cardTheme: CardThemeData(
-      color: AppColors.surface,
+      color: AppColors.moonWhite,
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       margin: EdgeInsets.zero,
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: AppColors.primary,
-        foregroundColor: AppColors.onTint,
+        backgroundColor: AppColors.peacock, // 按钮背景：柔空蓝
+        foregroundColor: Colors.white, // 按钮内字体/图标：白色
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        foregroundColor: AppColors.primary,
-        side: const BorderSide(color: AppColors.primary),
+        foregroundColor: Colors.white,
+        side: const BorderSide(color: AppColors.peacock),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         padding: const EdgeInsets.symmetric(horizontal: 106, vertical: 12),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: AppColors.inputFill,
+      fillColor: AppColors.ivory,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(color: AppColors.outline),
@@ -109,7 +89,7 @@ ThemeData buildAppTheme() {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: AppColors.primary, width: 2),
+        borderSide: const BorderSide(color: AppColors.peacock, width: 2),
       ),
       isDense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -120,13 +100,13 @@ ThemeData buildAppTheme() {
       space: 1,
     ),
     sliderTheme: const SliderThemeData(
-      activeTrackColor: AppColors.primary,
-      thumbColor: AppColors.mint,
+      activeTrackColor: AppColors.peacock,
+      thumbColor: AppColors.peacockDeep,
       inactiveTrackColor: AppColors.outline,
     ),
     snackBarTheme: const SnackBarThemeData(
-      backgroundColor: AppColors.primaryDeep,
-      contentTextStyle: TextStyle(color: AppColors.ink),
+      backgroundColor: AppColors.peacockDeep,
+      contentTextStyle: TextStyle(color: Colors.white),
       behavior: SnackBarBehavior.floating,
     ),
   );
