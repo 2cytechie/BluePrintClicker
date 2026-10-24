@@ -193,7 +193,7 @@ class _UnsupportedBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.moonWhite,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppColors.outline),
       ),
@@ -236,7 +236,7 @@ class _EntryCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Material(
-      color: AppColors.moonWhite,
+      color: AppColors.surface,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
@@ -328,7 +328,7 @@ class _ScriptList extends ConsumerWidget {
           return Container(
             padding: const EdgeInsets.all(32),
             decoration: BoxDecoration(
-              color: AppColors.moonWhite,
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
@@ -382,7 +382,7 @@ class _ScriptRow extends ConsumerWidget {
               const Icon(
                 Icons.hub_outlined,
                 size: 20,
-                color: AppColors.peacock,
+                color: AppColors.primary,
               ),
               const SizedBox(width: 10),
               Expanded(

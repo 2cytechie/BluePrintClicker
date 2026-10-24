@@ -331,7 +331,7 @@ class _HistoryPane extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.moonWhite,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -342,7 +342,7 @@ class _HistoryPane extends ConsumerWidget {
               Icon(
                 Icons.history_rounded,
                 size: 18,
-                color: AppColors.peacockDeep,
+                color: AppColors.primaryDeep,
               ),
               SizedBox(width: 6),
               Text(
@@ -399,7 +399,7 @@ class _HistoryTileState extends ConsumerState<_HistoryTile> {
               const Icon(
                 Icons.videocam_outlined,
                 size: 20,
-                color: AppColors.peacock,
+                color: AppColors.primary,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -429,14 +429,14 @@ class _HistoryTileState extends ConsumerState<_HistoryTile> {
                 icon: Icon(
                   Icons.expand_more_rounded,
                   size: 20,
-                  color: _expanded ? AppColors.peacock : AppColors.inkSecondary,
+                  color: _expanded ? AppColors.primary : AppColors.inkSecondary,
                 ),
                 tooltip: '查看',
                 onPressed: () => setState(() => _expanded = !_expanded),
               ),
               IconButton(
                 icon: const Icon(Icons.play_arrow_rounded, size: 20),
-                color: AppColors.peacock,
+                color: AppColors.primary,
                 tooltip: '回放',
                 onPressed: () => _replayRecording(context, ref),
               ),
@@ -463,7 +463,7 @@ class _HistoryTileState extends ConsumerState<_HistoryTile> {
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: AppColors.ivory,
+              color: AppColors.bg,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Column(

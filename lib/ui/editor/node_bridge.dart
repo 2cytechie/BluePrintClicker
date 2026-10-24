@@ -15,7 +15,7 @@ import '../../models/node_types.dart';
 /// 数据端口统一类型标签；执行流端口用 'exec'（成对约束）
 const String _kExecType = 'exec';
 
-/// fl.NodePort 颜色（执行流=孔雀蓝，数据=青玉）
+/// fl.NodePort 颜色（执行流=柔空蓝，数据=薄荷冰青）
 Color _portColor(bool isExec) => isExec ? AppColors.execWire : AppColors.dataWire;
 
 fl.NodePort _toFlPort(PortDef p) {

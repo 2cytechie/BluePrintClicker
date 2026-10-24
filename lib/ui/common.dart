@@ -54,7 +54,7 @@ class PageHeader extends StatelessWidget {
   }
 }
 
-/// 通用分节卡片：月白圆角底 + 标题行（图标/标题/尾部组件）+ 内容
+/// 通用分节卡片：面板色圆角底 + 标题行（图标/标题/尾部组件）+ 内容
 class SectionCard extends StatelessWidget {
   final String title;
   final IconData? icon;
@@ -74,7 +74,7 @@ class SectionCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.moonWhite,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -84,7 +84,7 @@ class SectionCard extends StatelessWidget {
           Row(
             children: [
               if (icon != null) ...[
-                Icon(icon, size: 18, color: AppColors.peacockDeep),
+                Icon(icon, size: 18, color: AppColors.primaryDeep),
                 const SizedBox(width: 6),
               ],
               Expanded(

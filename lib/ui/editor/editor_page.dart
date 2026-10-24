@@ -168,7 +168,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
   void _showPaletteSheet() {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.moonWhite,
+      backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -187,7 +187,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.ivory,
+      backgroundColor: AppColors.bg,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -260,8 +260,8 @@ class _EditorPageState extends ConsumerState<EditorPage> {
                         nodeBuilder: nodeBodyBuilder(
                           runningNodeId: runningNodeId,
                         ),
-                        theme: fl.NodeEditorTheme.light(
-                          accent: AppColors.peacock,
+                        theme: fl.NodeEditorTheme.dark(
+                          accent: AppColors.primary,
                         ).copyWith(background: AppColors.canvasBg),
                         onConnectionTap: _confirmDeleteConnection,
                       );
@@ -336,7 +336,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
     String currentNodeTitle,
   ) {
     return Container(
-      color: AppColors.moonWhite,
+      color: AppColors.surface,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
@@ -351,7 +351,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
           ),
           const Icon(
             Icons.account_tree_rounded,
-            color: AppColors.peacock,
+            color: AppColors.primary,
             size: 20,
           ),
           const SizedBox(width: 8),
@@ -379,14 +379,14 @@ class _EditorPageState extends ConsumerState<EditorPage> {
                         Icon(
                           Icons.fiber_manual_record,
                           size: 10,
-                          color: AppColors.peacock,
+                          color: AppColors.primary,
                         ),
                         SizedBox(width: 4),
                         Text(
                           '未保存',
                           style: TextStyle(
                             fontSize: 12,
-                            color: AppColors.peacock,
+                            color: AppColors.primary,
                           ),
                         ),
                       ],
@@ -455,7 +455,7 @@ class _EditorPageState extends ConsumerState<EditorPage> {
             onPressed: () => setState(() => _showLogs = !_showLogs),
             icon: Icon(
               Icons.article_outlined,
-              color: _showLogs ? AppColors.peacock : AppColors.inkSecondary,
+              color: _showLogs ? AppColors.primary : AppColors.inkSecondary,
             ),
           ),
         ],
@@ -527,7 +527,7 @@ class _PickBanner extends ConsumerWidget {
               const Icon(
                 Icons.my_location_rounded,
                 size: 15,
-                color: AppColors.peacock,
+                color: AppColors.primaryDeep,
               ),
               const SizedBox(width: 8),
               Text(
@@ -535,13 +535,13 @@ class _PickBanner extends ConsumerWidget {
                 ' · 左/右/中键确认 · Esc 取消',
                 style: const TextStyle(
                   fontSize: 12,
-                  color: AppColors.moonWhite,
+                  color: AppColors.surface,
                 ),
               ),
               if (pick.target?.buttonKey != null)
                 const Text(
                   ' · 按键随点击记录',
-                  style: TextStyle(fontSize: 12, color: AppColors.peacock),
+                  style: TextStyle(fontSize: 12, color: AppColors.primaryDeep),
                 ),
             ],
           ),
@@ -592,20 +592,20 @@ class _LogsPanelState extends ConsumerState<_LogsPanel> {
     );
     return Container(
       height: 220,
-      color: AppColors.ink,
+      color: AppColors.canvasBg,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
             height: 36,
             padding: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: const BoxDecoration(color: AppColors.peacockDeep),
+            decoration: const BoxDecoration(color: AppColors.primaryDeep),
             child: Row(
               children: [
                 const Icon(
                   Icons.article_outlined,
                   size: 16,
-                  color: AppColors.moonWhite,
+                  color: AppColors.ink,
                 ),
                 const SizedBox(width: 6),
                 const Expanded(
@@ -614,7 +614,7 @@ class _LogsPanelState extends ConsumerState<_LogsPanel> {
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.moonWhite,
+                      color: AppColors.ink,
                     ),
                   ),
                 ),
@@ -624,11 +624,11 @@ class _LogsPanelState extends ConsumerState<_LogsPanel> {
                   icon: const Icon(
                     Icons.delete_outline_rounded,
                     size: 16,
-                    color: AppColors.moonWhite,
+                    color: AppColors.ink,
                   ),
                   label: const Text(
                     '清空',
-                    style: TextStyle(fontSize: 12, color: AppColors.moonWhite),
+                    style: TextStyle(fontSize: 12, color: AppColors.ink),
                   ),
                 ),
               ],
@@ -646,7 +646,7 @@ class _LogsPanelState extends ConsumerState<_LogsPanel> {
                   style: const TextStyle(
                     fontSize: 12,
                     height: 1.4,
-                    color: AppColors.moonWhite,
+                    color: AppColors.ink,
                   ),
                 ),
               ),

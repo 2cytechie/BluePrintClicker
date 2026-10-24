@@ -6,7 +6,7 @@ import '../../core/theme.dart';
 import '../../models/node_types.dart';
 import '../../state/providers.dart';
 
-/// 生成 NodeEditor.nodeBuilder 回调；运行中节点以孔雀蓝发光高亮。
+/// 生成 NodeEditor.nodeBuilder 回调；运行中节点以柔空蓝发光高亮。
 /// [runningNodeId] 由编辑器页捕获 runnerProvider 状态后传入。
 fl.NodeWidgetBuilder nodeBodyBuilder({String? runningNodeId}) =>
     (context, node, state) => _NodeBodyContent(
@@ -38,14 +38,14 @@ class _NodeBodyContent extends StatelessWidget {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: highlight ? AppColors.success : (selected ? AppColors.peacock : AppColors.outline),
+          color: highlight ? AppColors.success : (selected ? AppColors.primary : AppColors.outline),
           width: highlight || selected ? 2 : 1,
         ),
         boxShadow: highlight
-            ? [BoxShadow(color: AppColors.peacock.withValues(alpha: 0.35), blurRadius: 12)]
+            ? [BoxShadow(color: AppColors.primary.withValues(alpha: 0.35), blurRadius: 12)]
             : const [BoxShadow(color: Color(0x14000000), blurRadius: 4, offset: Offset(0, 1))],
       ),
       child: Column(
@@ -61,7 +61,7 @@ class _NodeBodyContent extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(def.icon, size: 15, color: Colors.white),
+                Icon(def.icon, size: 15, color: AppColors.onTint),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -69,7 +69,7 @@ class _NodeBodyContent extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+                        fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.onTint),
                   ),
                 ),
               ],

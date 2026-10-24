@@ -181,7 +181,7 @@ class PropertyPanel extends ConsumerWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppColors.ivory,
+          color: AppColors.bg,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: AppColors.outline),
         ),
@@ -315,7 +315,7 @@ class PropertyPanel extends ConsumerWidget {
           children: [
             // 头部：类别色图标 + 标题 + 类型名 + 删除
             Container(
-              color: AppColors.moonWhite,
+              color: AppColors.surface,
               padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
               child: Row(
                 children: [
@@ -623,7 +623,7 @@ class _TemplateFileField extends StatelessWidget {
                     vertical: 9,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.inputFill,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: AppColors.outline),
                   ),
