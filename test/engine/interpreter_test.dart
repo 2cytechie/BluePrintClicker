@@ -392,7 +392,9 @@ void main() {
       await _run(s, auto: auto, hooks: hooks);
       expect(auto.calls, contains('click(100,200,count:1,left)'));
       expect(auto.calls, contains('scrollWheel(300,400,dy:240,dx:0)'));
-      expect(auto.calls, contains('keyTap(67,80,ext:false)'));
+      // 键动作走事件流：down/up 成对
+      expect(auto.calls, contains('keyDown(67,ext:false)'));
+      expect(auto.calls, contains('keyUp(67,ext:false)'));
       expect(hooks.logs.join(), contains('测试录制'));
     });
 

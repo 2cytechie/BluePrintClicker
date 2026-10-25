@@ -273,7 +273,7 @@ class ScreenMarkerService {
     ui.Offset local(MarkerPoint p) =>
         ui.Offset((p.x - winX).toDouble(), (p.y - winY).toDouble());
 
-    // 连线（滑动起终点；两点间灰白线，白描边保证任何背景可见）
+    // 连线（滑动起终点；两点间灰白线 + 终点方向箭头）
     if (_points.length == 2) {
       final a = local(_points[0]);
       final b = local(_points[1]);
@@ -287,6 +287,30 @@ class ScreenMarkerService {
         ..strokeWidth = 2.5 * dpr
         ..strokeCap = ui.StrokeCap.round
         ..isAntiAlias = true);
+      // 方向箭头：终点图标外侧指向滑动方向（距离足够时绘制）
+      final delta = b - a;
+      final dist = delta.distance;
+      if (dist > 4 * radius) {
+        final dir = delta / dist;
+        final perp = ui.Offset(-dir.dy, dir.dx);
+        final tip = b - dir * (radius + 6 * dpr); // 箭头顶点
+        final back = tip - dir * (11 * dpr); // 箭头底部中心
+        final w1 = back + perp * (7 * dpr);
+        final w2 = back - perp * (7 * dpr);
+        final arrow = ui.Path()
+          ..moveTo(tip.dx, tip.dy)
+          ..lineTo(w1.dx, w1.dy)
+          ..lineTo(w2.dx, w2.dy)
+          ..close();
+        canvas.drawPath(arrow, ui.Paint()
+          ..color = const ui.Color(0x66000000)
+          ..style = ui.PaintingStyle.stroke
+          ..strokeWidth = 5 * dpr
+          ..isAntiAlias = true);
+        canvas.drawPath(arrow, ui.Paint()
+          ..color = const ui.Color(_colorLine)
+          ..isAntiAlias = true);
+      }
     }
 
     for (final p in _points) {

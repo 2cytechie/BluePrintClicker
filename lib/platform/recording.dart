@@ -199,6 +199,9 @@ const int vkStopReplay = 0x79;
 /// [cancelled] 返回 true 时中止；[log] 可选输出进度；
 /// [loopCount] 循环次数、[loopIntervalMs] 两轮之间隔。
 /// 内建 F10 停止热键检测（100ms 轮询），等待切分为小分片，按下即刻中止。
+/// 键动作（RecKey/RecCombo）采用事件流调度：连续键段展开为按下/抬起事件
+/// 按时间轴执行（AutoHotkey 模式）——长按 Alt 连点 Tab 等交错按键序列
+/// 也能精确还原，且中止时自动抬起已按下键防止目标窗口卡键。
 /// 供录制页回放、历史回放、编辑页试运行与蓝图「执行录制」节点共用。
 Future<void> replayActions(
   PlatformAutomation automation,
@@ -226,16 +229,105 @@ Future<void> replayActions(
     return false;
   }
 
+  // 连续键动作段缓冲（遇鼠标/滚轮动作或列表末尾时执行）
+  final keySegment = <RecordedAction>[];
+
+  /// 展开段为 down/up 事件流并按时间轴执行。
+  /// 返回 (是否中止, 段内最后事件时刻)；空段返回 (false, startFrom)。
+  Future<(bool, int)> flushKeySegment(int startFrom) async {
+    if (keySegment.isEmpty) return (false, startFrom);
+
+    // 展开：(时间, 插入序, vk, 是否按下, extended)
+    final events = <(int, int, int, bool, bool)>[];
+    var seq = 0;
+    for (final a in keySegment) {
+      switch (a) {
+        case RecKey k:
+          events.add((k.offsetMs, seq++, k.vkCode, true, k.extended));
+          events.add((k.offsetMs + k.durationMs, seq++, k.vkCode, false,
+              k.extended));
+        case RecCombo c:
+          // down：按下顺序，间隔 20ms 确保修饰键生效
+          var t = c.offsetMs;
+          for (var i = 0; i < c.vkCodes.length; i++) {
+            final ext = i < c.extendeds.length && c.extendeds[i];
+            events.add((t, seq++, c.vkCodes[i], true, ext));
+            t += 20;
+          }
+          // up：按下总时长后逆序抬起，间隔 20ms
+          var upT = c.offsetMs + c.durationMs;
+          for (var i = c.vkCodes.length - 1; i >= 0; i--) {
+            final ext = i < c.extendeds.length && c.extendeds[i];
+            events.add((upT, seq++, c.vkCodes[i], false, ext));
+            upT += 20;
+          }
+        default:
+          break; // 不可达：段内只收集键动作
+      }
+    }
+    keySegment.clear();
+
+    // 稳定排序：时间为主键，插入序为 tie-breaker（同刻保持录制/展开顺序）
+    events.sort((x, y) {
+      final c = x.$1.compareTo(y.$1);
+      return c != 0 ? c : x.$2.compareTo(y.$2);
+    });
+
+    var prev = startFrom;
+    var lastTime = startFrom;
+    final pressed = <(int, bool)>[]; // (vk, extended) 已按下未抬起
+    Future<bool> releaseAll() async {
+      for (final p in pressed.reversed) {
+        await automation.keyUp(p.$1, extended: p.$2);
+      }
+      pressed.clear();
+      return true;
+    }
+
+    for (final e in events) {
+      final wait = e.$1 - prev;
+      if (wait > 0) {
+        if (await waitAbortable(wait)) return (await releaseAll(), lastTime);
+        prev = e.$1;
+      }
+      if (e.$4) {
+        await automation.keyDown(e.$3, extended: e.$5);
+        pressed.add((e.$3, e.$5));
+      } else {
+        await automation.keyUp(e.$3, extended: e.$5);
+        pressed.removeWhere((p) => p.$1 == e.$3 && p.$2 == e.$5);
+      }
+      lastTime = e.$1;
+      if (abortRequested()) return (await releaseAll(), lastTime);
+    }
+    return (false, lastTime);
+  }
+
   final rounds = loopCount.clamp(1, 9999);
   outer:
   for (var round = 0; round < rounds; round++) {
     var prevOffset = 0;
+    keySegment.clear();
     for (final a in actions) {
       if (abortRequested()) break outer;
+      // 键动作进入连续段：交错时序由事件流精确还原
+      if (a is RecKey || a is RecCombo) {
+        keySegment.add(a);
+        continue;
+      }
+      // 鼠标/滚轮动作前，先执行已收集的键段
+      final (segAborted, segEnd) = await flushKeySegment(prevOffset);
+      if (segAborted) {
+        aborted = true;
+        break outer;
+      }
+      prevOffset = segEnd;
       final wait = a.offsetMs - prevOffset;
       if (wait > 0) {
-        aborted = await waitAbortable(wait);
-        if (aborted) break outer;
+        if (await waitAbortable(wait)) {
+          aborted = true;
+          break outer;
+        }
       }
       prevOffset = a.offsetMs;
       switch (a) {
@@ -262,44 +354,25 @@ Future<void> replayActions(
           await automation.longPress(p.x, p.y, durationMs: p.durationMs);
         case RecScroll s:
           await automation.scrollWheel(s.x, s.y, dy: s.dy, dx: s.dx);
-        case RecKey k:
-          await automation.keyTap(
-            k.vkCode,
-            durationMs: k.durationMs,
-            extended: k.extended,
-          );
-        case RecCombo c:
-          // 组合键：按下所有键（键间 20ms 确保修饰键生效）→ 按住 → 逆序抬起
-          final pressed = <int>[];
-          for (var i = 0; i < c.vkCodes.length; i++) {
-            final vk = c.vkCodes[i];
-            final ext = i < c.extendeds.length && c.extendeds[i];
-            await automation.keyDown(vk, extended: ext);
-            pressed.add(vk);
-            if (abortRequested()) break;
-            await Future<void>.delayed(const Duration(milliseconds: 20));
-          }
-          var held = c.durationMs - pressed.length * 20;
-          if (held > 0) {
-            if (await waitAbortable(held)) {
-              // 中止也要抬起已按下的键，避免目标窗口卡键
-              for (final vk in pressed.reversed) {
-                await automation.keyUp(vk);
-              }
-              return;
-            }
-          }
-          for (var i = c.vkCodes.length - 1; i >= 0; i--) {
-            final ext = i < c.extendeds.length && c.extendeds[i];
-            await automation.keyUp(c.vkCodes[i], extended: ext);
-          }
+        case RecKey():
+        case RecCombo():
+          break; // 不可达：键动作已进入事件流段
       }
       if (abortRequested()) break outer;
     }
+    // 列表末尾剩余键段
+    final (tailAborted, tailEnd) = await flushKeySegment(prevOffset);
+    if (tailAborted) {
+      aborted = true;
+      break;
+    }
+    prevOffset = tailEnd;
     // 轮间隔（最后一轮之后不再等）
     if (round < rounds - 1 && loopIntervalMs > 0) {
-      aborted = await waitAbortable(loopIntervalMs);
-      if (aborted) break;
+      if (await waitAbortable(loopIntervalMs)) {
+        aborted = true;
+        break;
+      }
     }
   }
 }

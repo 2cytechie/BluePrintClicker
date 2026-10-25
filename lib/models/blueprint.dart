@@ -400,47 +400,75 @@ class Recording {
   }
 }
 
-/// 把时间上重叠的连续 RecKey 合并为 RecCombo（组合键）。
-/// 规则：key[i+1].offsetMs 落在 [key[i].offsetMs, key[i].offsetMs + key[i].durationMs]
-/// 区间内（即后一个键在前一个键还按着时按下）→ 同一组合链。
-/// 链 [k1..kn] → RecCombo(offset=k1.offsetMs, vkCodes 按按下顺序,
-/// durationMs = max(各键抬起时刻) - k1.offsetMs)。
-/// 非 RecKey 动作打断链保持原位；已是 RecCombo 的动作原样保留（幂等）。
+/// 把时间上重叠的按键簇合并为 RecCombo（组合键）。
+///
+/// 分簇规则：新键与簇中【任意成员】的按下区间 [offset, offset+duration] 相交 → 同簇。
+/// （长按修饰键期间连点其他键——如 Alt+Tab 切换窗口——整簇相连，不会被中途切断。）
+///
+/// 簇可合并条件（嵌套判据）：按下时刻升序后，所有 down_i < down_j 均满足
+/// up_i >= up_j（先按下的键持续到后按下的键抬起之后）。
+/// - 嵌套簇（Ctrl+C、Ctrl+Shift+A）→ RecCombo：按下→按住→逆序抬起可精确表达；
+/// - 交错簇（长按 Alt 连点 Tab：前一个 Tab 早于后一个 Tab 抬起）→ 保持独立
+///   RecKey 序列——RecCombo 模型表达不了交错，独立键交给回放端事件流精确还原。
+/// 非 RecKey 动作打断簇保持原位；已是 RecCombo 的动作原样保留（幂等）。
 List<RecordedAction> mergeKeyCombos(List<RecordedAction> actions) {
   final out = <RecordedAction>[];
-  var chain = <RecKey>[];
+  var cluster = <RecKey>[];
+
+  bool overlapsAny(RecKey k) {
+    for (final c in cluster) {
+      if (k.offsetMs >= c.offsetMs && k.offsetMs <= c.offsetMs + c.durationMs) {
+        return true;
+      }
+    }
+    return false;
+  }
 
   void flush() {
-    if (chain.isEmpty) return;
-    if (chain.length == 1) {
-      out.add(chain.single);
-    } else {
-      final start = chain.first.offsetMs;
-      var end = 0;
-      for (final k in chain) {
-        final e = k.offsetMs + k.durationMs;
-        if (e > end) end = e;
+    if (cluster.isEmpty) return;
+    if (cluster.length > 1) {
+      final sorted = List.of(cluster)
+        ..sort((a, b) => a.offsetMs.compareTo(b.offsetMs));
+      var nested = true;
+      outerLoop:
+      for (var i = 0; i < sorted.length; i++) {
+        final upI = sorted[i].offsetMs + sorted[i].durationMs;
+        for (var j = i + 1; j < sorted.length; j++) {
+          final upJ = sorted[j].offsetMs + sorted[j].durationMs;
+          if (upI < upJ) {
+            nested = false;
+            break outerLoop;
+          }
+        }
       }
-      out.add(RecCombo(
-        start,
-        chain.map((k) => k.vkCode).toList(),
-        extendeds: chain.map((k) => k.extended).toList(),
-        durationMs: (end - start).clamp(1, 60000),
-      ));
+      if (nested) {
+        final start = sorted.first.offsetMs;
+        var end = 0;
+        for (final k in sorted) {
+          final e = k.offsetMs + k.durationMs;
+          if (e > end) end = e;
+        }
+        out.add(RecCombo(
+          start,
+          sorted.map((k) => k.vkCode).toList(),
+          extendeds: sorted.map((k) => k.extended).toList(),
+          durationMs: (end - start).clamp(1, 60000),
+        ));
+        cluster = [];
+        return;
+      }
     }
-    chain = [];
+    out.addAll(cluster); // 单键簇或交错簇 → 原样（保持录制顺序）
+    cluster = [];
   }
 
   for (final a in actions) {
     if (a is RecKey) {
-      final last = chain.isEmpty ? null : chain.last;
-      // 与前一键按下区间重叠 → 入链
-      if (last != null && a.offsetMs >= last.offsetMs &&
-          a.offsetMs <= last.offsetMs + last.durationMs) {
-        chain.add(a);
+      if (cluster.isNotEmpty && overlapsAny(a)) {
+        cluster.add(a);
       } else {
         flush();
-        chain.add(a);
+        cluster.add(a);
       }
     } else {
       flush();

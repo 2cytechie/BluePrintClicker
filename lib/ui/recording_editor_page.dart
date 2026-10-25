@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme.dart';
@@ -6,6 +9,7 @@ import '../models/blueprint.dart';
 import '../platform/recording.dart'
     show describeAction, replayActions, vkName;
 import '../platform/screen_marker.dart';
+import '../platform/win32/user32.dart' as u32;
 import '../state/providers.dart';
 import 'common.dart';
 
@@ -24,16 +28,89 @@ class RecordingEditorPage extends ConsumerStatefulWidget {
 class _RecordingEditorPageState extends ConsumerState<RecordingEditorPage> {
   late String _name;
   late final List<RecordedAction> _actions;
+  late final List<int> _uids; // 动作稳定标识（ReorderableListView key 用，跟动作走）
+  int _uidNext = 0;
   int _expandedIndex = -1; // 展开编辑面板的动作（-1 = 全收起）
   int _markerIndex = -1; // 屏幕定位激活的动作（-1 = 无）
   bool _replaying = false;
   Future<void> _saveChain = Future.value(); // 串行化保存，避免乱序覆盖
+
+  // ---- 撤销/重做（快照式；参数微调按 1 秒窗口合并为一步）----
+  final List<(List<RecordedAction>, List<int>)> _undoStack = [];
+  final List<(List<RecordedAction>, List<int>)> _redoStack = [];
+  static const _maxUndo = 50;
+  String? _lastMergeKey;
+  DateTime? _lastSnapshotTime;
+
+  void _pushUndo({String? mergeKey}) {
+    final now = DateTime.now();
+    // 同一目标 1 秒内的连续微调（打字/方向键长按）合并为一个撤销步
+    if (mergeKey != null &&
+        _lastMergeKey == mergeKey &&
+        _lastSnapshotTime != null &&
+        now.difference(_lastSnapshotTime!) < const Duration(seconds: 1)) {
+      return;
+    }
+    _lastMergeKey = mergeKey;
+    _lastSnapshotTime = now;
+    _undoStack.add((List.of(_actions), List.of(_uids)));
+    if (_undoStack.length > _maxUndo) _undoStack.removeAt(0);
+    _redoStack.clear();
+  }
+
+  void _undo() {
+    if (_undoStack.isEmpty || _replaying || _focusInEditable()) return;
+    _redoStack.add((List.of(_actions), List.of(_uids)));
+    final (actions, uids) = _undoStack.removeLast();
+    _lastMergeKey = null;
+    setState(() {
+      _actions
+        ..clear()
+        ..addAll(actions);
+      _uids
+        ..clear()
+        ..addAll(uids);
+      _expandedIndex = -1;
+    });
+    _hideMarker();
+    _save();
+  }
+
+  void _redo() {
+    if (_redoStack.isEmpty || _replaying || _focusInEditable()) return;
+    _undoStack.add((List.of(_actions), List.of(_uids)));
+    final (actions, uids) = _redoStack.removeLast();
+    _lastMergeKey = null;
+    setState(() {
+      _actions
+        ..clear()
+        ..addAll(actions);
+      _uids
+        ..clear()
+        ..addAll(uids);
+      _expandedIndex = -1;
+    });
+    _hideMarker();
+    _save();
+  }
+
+  /// 焦点是否在文本输入框内（快捷键不抢文本框的方向键/Delete/退格）
+  bool _focusInEditable() {
+    var node = FocusManager.instance.primaryFocus;
+    while (node != null) {
+      if (node.context?.widget is EditableText) return true;
+      node = node.parent;
+    }
+    return false;
+  }
 
   @override
   void initState() {
     super.initState();
     _name = widget.recording.name;
     _actions = List.of(widget.recording.actions);
+    _uids = [for (var i = 0; i < _actions.length; i++) i];
+    _uidNext = _actions.length;
   }
 
   @override
@@ -61,22 +138,31 @@ class _RecordingEditorPageState extends ConsumerState<RecordingEditorPage> {
   }
 
   void _updateAction(int index, RecordedAction action) {
+    _pushUndo(mergeKey: 'edit_$index'); // 连续微调合并为一个撤销步
     setState(() => _actions[index] = action);
     _save();
     _refreshMarker();
   }
 
-  void _addAction(RecordedAction action) {
+  /// 添加动作；[insertAt] 为插入位置（null = 追加到末尾）
+  void _addAction(RecordedAction action, {int? insertAt}) {
+    _pushUndo();
     setState(() {
-      _actions.add(action);
-      _expandedIndex = _actions.length - 1; // 新动作直接展开便于编辑
+      final at = (insertAt == null || insertAt > _actions.length)
+          ? _actions.length
+          : insertAt;
+      _actions.insert(at, action);
+      _uids.insert(at, _uidNext++);
+      _expandedIndex = at; // 新动作直接展开便于编辑
     });
     _save();
   }
 
   void _removeAction(int index) {
+    _pushUndo();
     setState(() {
       _actions.removeAt(index);
+      _uids.removeAt(index);
       if (_expandedIndex >= _actions.length) _expandedIndex = -1;
     });
     if (_markerIndex == index) {
@@ -90,6 +176,7 @@ class _RecordingEditorPageState extends ConsumerState<RecordingEditorPage> {
   void _moveAction(int index, int delta) {
     final target = index + delta;
     if (target < 0 || target >= _actions.length) return;
+    _pushUndo();
     if (_markerIndex == index) {
       _hideMarker();
     } else if (_markerIndex == target) {
@@ -98,6 +185,8 @@ class _RecordingEditorPageState extends ConsumerState<RecordingEditorPage> {
     setState(() {
       final a = _actions.removeAt(index);
       _actions.insert(target, a);
+      final uid = _uids.removeAt(index);
+      _uids.insert(target, uid);
       if (_expandedIndex == index) {
         _expandedIndex = target;
       } else if (_expandedIndex == target) {
@@ -105,6 +194,35 @@ class _RecordingEditorPageState extends ConsumerState<RecordingEditorPage> {
       }
     });
     _save();
+  }
+
+  /// 拖拽重排（ReorderableListView）：同步展开状态与屏幕定位的索引。
+  /// onReorderItem 的 newIndex 已按"移除原项后"的语义调整，无需再 -1。
+  void _onReorderItem(int oldIndex, int newIndex) {
+    if (newIndex == oldIndex) return;
+    _pushUndo();
+    setState(() {
+      final a = _actions.removeAt(oldIndex);
+      _actions.insert(newIndex, a);
+      final uid = _uids.removeAt(oldIndex);
+      _uids.insert(newIndex, uid);
+      _expandedIndex = _remapIndex(_expandedIndex, oldIndex, newIndex);
+      _markerIndex = _remapIndex(_markerIndex, oldIndex, newIndex);
+    });
+    _save();
+    _refreshMarker();
+  }
+
+  /// 元素从 oldIndex 移到 newIndex 后，原 index 的元素的新位置
+  int _remapIndex(int idx, int oldIndex, int newIndex) {
+    if (idx < 0) return idx;
+    if (idx == oldIndex) return newIndex;
+    if (oldIndex < newIndex) {
+      if (idx > oldIndex && idx <= newIndex) return idx - 1;
+    } else {
+      if (idx >= newIndex && idx < oldIndex) return idx + 1;
+    }
+    return idx;
   }
 
   Future<void> _rename() async {
@@ -154,12 +272,66 @@ class _RecordingEditorPageState extends ConsumerState<RecordingEditorPage> {
       _markerIndex = -1;
     });
     try {
-      await replayActions(automation, _actions);
+      await replayActions(
+        automation,
+        List.of(_actions), // 快照：回放中编辑不影响本轮
+      );
       _toast('回放完成');
     } catch (e) {
       _toast('回放中断：$e');
     } finally {
       if (mounted) setState(() => _replaying = false);
+    }
+  }
+
+  // ---- 键盘快捷键（方向键微调坐标 / Delete 删除；焦点在输入框时不触发）----
+
+  /// 录制总时长（最后一个动作的结束时刻，秒，1 位小数）
+  String get _totalSeconds {
+    if (_actions.isEmpty) return '0.0';
+    var end = 0;
+    for (final a in _actions) {
+      final dur = switch (a) {
+        RecSwipe w => w.durationMs,
+        RecLongPress p => p.durationMs,
+        RecKey k => k.durationMs,
+        RecCombo c => c.durationMs,
+        _ => 0,
+      };
+      final e = a.offsetMs + dur;
+      if (e > end) end = e;
+    }
+    return (end / 1000).toStringAsFixed(1);
+  }
+
+  void _deleteExpandedAction() {
+    if (_focusInEditable() || _expandedIndex < 0) return;
+    _removeAction(_expandedIndex);
+  }
+
+  /// 方向键微调展开动作的坐标（步长 1，Shift 步长 10）；滑动则整体平移
+  void _nudgeExpanded(int dx, int dy, {int step = 1}) {
+    if (_focusInEditable() || _expandedIndex < 0) return;
+    final i = _expandedIndex;
+    switch (_actions[i]) {
+      case RecClick c:
+        _updateAction(
+            i, RecClick(c.offsetMs, c.x + dx * step, c.y + dy * step,
+                count: c.count, button: c.button));
+      case RecLongPress p:
+        _updateAction(i,
+            RecLongPress(p.offsetMs, p.x + dx * step, p.y + dy * step, p.durationMs));
+      case RecScroll s:
+        _updateAction(i,
+            RecScroll(s.offsetMs, s.x + dx * step, s.y + dy * step,
+                dx: s.dx, dy: s.dy));
+      case RecSwipe w:
+        _updateAction(
+            i,
+            RecSwipe(w.offsetMs, w.x1 + dx * step, w.y1 + dy * step,
+                w.x2 + dx * step, w.y2 + dy * step, w.durationMs));
+      default:
+        break; // 按键/组合键无坐标
     }
   }
 
@@ -184,7 +356,13 @@ class _RecordingEditorPageState extends ConsumerState<RecordingEditorPage> {
     }
     ref.read(screenMarkerProvider).show(
           points,
-          onDragEnd: (pointIndex, x, y) => _onMarkerDragged(index, pointIndex, x, y),
+          // 动态读取当前 _markerIndex：列表重排/增删后不会指错动作
+          onDragEnd: (pointIndex, x, y) {
+            final mi = _markerIndex;
+            if (mi >= 0 && mi < _actions.length) {
+              _onMarkerDragged(mi, pointIndex, x, y);
+            }
+          },
         );
     setState(() {});
   }
@@ -249,35 +427,51 @@ class _RecordingEditorPageState extends ConsumerState<RecordingEditorPage> {
   // ---- 添加动作 ----
 
   Future<void> _pickAndAddAction() async {
-    final kind = await showDialog<String>(
+    // 返回 (动作类型, 是否插入到当前展开动作之后)
+    var insertAfterExpanded = false;
+    final result = await showDialog<(String, bool)>(
       context: context,
-      builder: (ctx) => SimpleDialog(
-        title: const Text('添加动作'),
-        children: [
-          for (final entry in const {
-            'RecClick': ('点击', Icons.mouse_rounded, AppColors.peacock),
-            'RecSwipe': ('滑动', Icons.swipe_rounded, AppColors.nodeMedia),
-            'RecLongPress': ('长按', Icons.timer_rounded, AppColors.danger),
-            'RecScroll': ('滚轮', Icons.swap_vert_rounded, AppColors.nodeScript),
-            'RecKey': ('按键', Icons.keyboard_rounded, AppColors.nodeData),
-            'RecCombo': ('组合键', Icons.keyboard_command_key_rounded, AppColors.success),
-          }.entries)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(ctx, entry.key),
-              child: Row(
-                children: [
-                  Icon(entry.value.$2, size: 20, color: entry.value.$3),
-                  const SizedBox(width: 12),
-                  Text(entry.value.$1,
-                      style: const TextStyle(
-                          fontSize: 15, color: AppColors.ink)),
-                ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          return SimpleDialog(
+            title: const Text('添加动作'),
+            children: [
+              CheckboxListTile(
+                dense: true,
+                value: insertAfterExpanded,
+                onChanged: (v) =>
+                    setDialogState(() => insertAfterExpanded = v ?? false),
+                controlAffinity: ListTileControlAffinity.leading,
+                title: const Text('插入到当前展开动作之后',
+                    style: TextStyle(fontSize: 13, color: AppColors.inkSecondary)),
               ),
-            ),
-        ],
+              for (final entry in const {
+                'RecClick': ('点击', Icons.mouse_rounded, AppColors.peacock),
+                'RecSwipe': ('滑动', Icons.swipe_rounded, AppColors.nodeMedia),
+                'RecLongPress': ('长按', Icons.timer_rounded, AppColors.danger),
+                'RecScroll': ('滚轮', Icons.swap_vert_rounded, AppColors.nodeScript),
+                'RecKey': ('按键', Icons.keyboard_rounded, AppColors.nodeData),
+                'RecCombo': ('组合键', Icons.keyboard_command_key_rounded, AppColors.success),
+              }.entries)
+                SimpleDialogOption(
+                  onPressed: () => Navigator.pop(ctx, (entry.key, insertAfterExpanded)),
+                  child: Row(
+                    children: [
+                      Icon(entry.value.$2, size: 20, color: entry.value.$3),
+                      const SizedBox(width: 12),
+                      Text(entry.value.$1,
+                          style: const TextStyle(
+                              fontSize: 15, color: AppColors.ink)),
+                    ],
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
-    if (kind == null) return;
+    if (result == null) return;
+    final (kind, insertAfter) = result;
     final (sw, sh) = ref.read(automationProvider).screenSize;
     final cx = sw ~/ 2;
     final cy = sh ~/ 2;
@@ -293,103 +487,156 @@ class _RecordingEditorPageState extends ConsumerState<RecordingEditorPage> {
       'RecKey' => RecKey(offset, 0x41, durationMs: 60),
       _ => RecCombo(offset, [0x11, 0x43], durationMs: 100),
     };
-    _addAction(action);
+    _addAction(
+      action,
+      insertAt: insertAfter && _expandedIndex >= 0 ? _expandedIndex + 1 : null,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                IconButton(
-                  tooltip: '返回',
-                  icon: const Icon(Icons.arrow_back_rounded),
-                  onPressed: () => Navigator.pop(context),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: PageHeader(
-                    title: '编辑录制',
-                    subtitle: _name,
-                    trailing: [
-                      IconButton(
-                        tooltip: '重命名',
-                        icon: const Icon(Icons.drive_file_rename_outline_rounded,
-                            size: 20),
-                        onPressed: _rename,
-                      ),
-                      if (_replaying)
-                        const StatusBadge(
-                            text: '回放中 · F10 中止', color: AppColors.nodeLogic),
-                    ],
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyZ, control: true): _undo,
+        const SingleActivator(LogicalKeyboardKey.keyY, control: true): _redo,
+        const SingleActivator(LogicalKeyboardKey.delete):
+            _deleteExpandedAction,
+        const SingleActivator(LogicalKeyboardKey.arrowUp):
+            () => _nudgeExpanded(0, -1),
+        const SingleActivator(LogicalKeyboardKey.arrowDown):
+            () => _nudgeExpanded(0, 1),
+        const SingleActivator(LogicalKeyboardKey.arrowLeft):
+            () => _nudgeExpanded(-1, 0),
+        const SingleActivator(LogicalKeyboardKey.arrowRight):
+            () => _nudgeExpanded(1, 0),
+        const SingleActivator(LogicalKeyboardKey.arrowUp, shift: true):
+            () => _nudgeExpanded(0, -1, step: 10),
+        const SingleActivator(LogicalKeyboardKey.arrowDown, shift: true):
+            () => _nudgeExpanded(0, 1, step: 10),
+        const SingleActivator(LogicalKeyboardKey.arrowLeft, shift: true):
+            () => _nudgeExpanded(-1, 0, step: 10),
+        const SingleActivator(LogicalKeyboardKey.arrowRight, shift: true):
+            () => _nudgeExpanded(1, 0, step: 10),
+      },
+      child: Scaffold(
+        body: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: '返回',
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    onPressed: () => Navigator.pop(context),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            // 操作行：添加 / 试运行
-            Wrap(
-              spacing: 12,
-              runSpacing: 10,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                FilledButton.icon(
-                  onPressed: _replaying ? null : _pickAndAddAction,
-                  icon: const Icon(Icons.add_rounded, size: 18),
-                  label: const Text('添加动作'),
-                ),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: AppColors.peacock),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                  ),
-                  onPressed: _replaying ? null : _replay,
-                  icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                  label: const Text('试运行'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Expanded(
-              child: _actions.isEmpty
-                  ? Center(
-                      child: Text(
-                        '暂无动作，点击「添加动作」开始编排',
-                        style: TextStyle(
-                            fontSize: 13, color: AppColors.inkSecondary),
-                      ),
-                    )
-                  : ListView.separated(
-                      itemCount: _actions.length,
-                      separatorBuilder: (_, _) => const Divider(),
-                      itemBuilder: (context, i) => _ActionTile(
-                        index: i,
-                        action: _actions[i],
-                        expanded: _expandedIndex == i,
-                        marking: _markerIndex == i,
-                        isFirst: i == 0,
-                        isLast: i == _actions.length - 1,
-                        hasCoordinate: _markerPointsFor(_actions[i]) != null,
-                        onToggleExpand: () => setState(() =>
-                            _expandedIndex = _expandedIndex == i ? -1 : i),
-                        onUpdate: (a) => _updateAction(i, a),
-                        onMoveUp: () => _moveAction(i, -1),
-                        onMoveDown: () => _moveAction(i, 1),
-                        onDelete: () => _removeAction(i),
-                        onToggleMarker: () => _toggleMarker(i),
-                      ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: PageHeader(
+                      title: '编辑录制',
+                      subtitle: '$_name · ${_actions.length} 个动作 · 总时长 ${_totalSeconds}s',
+                      trailing: [
+                        IconButton(
+                          tooltip: '重命名',
+                          icon: const Icon(Icons.drive_file_rename_outline_rounded,
+                              size: 20),
+                          onPressed: _rename,
+                        ),
+                        if (_replaying)
+                          const StatusBadge(
+                              text: '回放中 · F10 中止', color: AppColors.nodeLogic),
+                      ],
                     ),
-            ),
-          ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              // 操作行：添加 / 试运行 / 撤销重做
+              Wrap(
+                spacing: 12,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  FilledButton.icon(
+                    onPressed: _replaying ? null : _pickAndAddAction,
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: const Text('添加动作'),
+                  ),
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: const BorderSide(color: AppColors.peacock),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10)),
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                    ),
+                    onPressed: _replaying ? null : _replay,
+                    icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                    label: const Text('试运行'),
+                  ),
+                  IconButton(
+                    tooltip: '撤销 (Ctrl+Z)',
+                    icon: const Icon(Icons.undo_rounded, size: 20),
+                    color: _undoStack.isEmpty
+                        ? AppColors.inkSecondary.withValues(alpha: 0.4)
+                        : AppColors.inkSecondary,
+                    onPressed:
+                        _undoStack.isEmpty || _replaying ? null : _undo,
+                  ),
+                  IconButton(
+                    tooltip: '重做 (Ctrl+Y)',
+                    icon: const Icon(Icons.redo_rounded, size: 20),
+                    color: _redoStack.isEmpty
+                        ? AppColors.inkSecondary.withValues(alpha: 0.4)
+                        : AppColors.inkSecondary,
+                    onPressed:
+                        _redoStack.isEmpty || _replaying ? null : _redo,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Expanded(
+                child: _actions.isEmpty
+                    ? Center(
+                        child: Text(
+                          '暂无动作，点击「添加动作」开始编排',
+                          style: TextStyle(
+                              fontSize: 13, color: AppColors.inkSecondary),
+                        ),
+                      )
+                    : ReorderableListView.builder(
+                        buildDefaultDragHandles: false,
+                        padding: const EdgeInsets.only(bottom: 6),
+                        itemCount: _actions.length,
+                        onReorderItem: _onReorderItem,
+                        itemBuilder: (context, i) => Padding(
+                          key: ValueKey('a${_uids[i]}'),
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: _ActionTile(
+                            index: i,
+                            action: _actions[i],
+                            expanded: _expandedIndex == i,
+                            marking: _markerIndex == i,
+                            replaying: _replaying,
+                            isFirst: i == 0,
+                            isLast: i == _actions.length - 1,
+                            hasCoordinate:
+                                _markerPointsFor(_actions[i]) != null,
+                            onToggleExpand: () => setState(() =>
+                                _expandedIndex = _expandedIndex == i ? -1 : i),
+                            onUpdate: (a) => _updateAction(i, a),
+                            onMoveUp: () => _moveAction(i, -1),
+                            onMoveDown: () => _moveAction(i, 1),
+                            onDelete: () => _removeAction(i),
+                            onToggleMarker: () => _toggleMarker(i),
+                          ),
+                        ),
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -403,6 +650,7 @@ class _ActionTile extends StatelessWidget {
   final RecordedAction action;
   final bool expanded;
   final bool marking;
+  final bool replaying;
   final bool isFirst;
   final bool isLast;
   final bool hasCoordinate;
@@ -418,6 +666,7 @@ class _ActionTile extends StatelessWidget {
     required this.action,
     required this.expanded,
     required this.marking,
+    required this.replaying,
     required this.isFirst,
     required this.isLast,
     required this.hasCoordinate,
@@ -453,6 +702,19 @@ class _ActionTile extends StatelessWidget {
         children: [
           Row(
             children: [
+              // 拖拽排序把手（长按拖动调整执行顺序；试运行中禁用）
+              IgnorePointer(
+                ignoring: replaying,
+                child: ReorderableDragStartListener(
+                  index: index,
+                  child: const Icon(
+                    Icons.drag_indicator_rounded,
+                    size: 18,
+                    color: AppColors.inkSecondary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -475,24 +737,36 @@ class _ActionTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              Text(
-                '${index + 1}.',
-                style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.ink),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                '[+${action.offsetMs}ms]',
-                style:
-                    const TextStyle(fontSize: 12, color: AppColors.inkSecondary),
-              ),
-              const SizedBox(width: 8),
+              // 摘要文字整体可点击展开/收起
               Expanded(
-                child: Text(
-                  describeAction(action),
-                  style: const TextStyle(fontSize: 13, color: AppColors.ink),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: onToggleExpand,
+                  child: Row(
+                    children: [
+                      Text(
+                        '${index + 1}.',
+                        style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.ink),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '[+${action.offsetMs}ms]',
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.inkSecondary),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          describeAction(action),
+                          style: const TextStyle(
+                              fontSize: 13, color: AppColors.ink),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               _iconBtn(Icons.arrow_upward_rounded, '上移',
@@ -736,7 +1010,7 @@ class _EditPanel extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(6),
           onTap: () async {
-            final vk = await pickVirtualKeyDialog(context);
+            final vk = await listenVirtualKeyDialog(context);
             if (vk != null) onPicked(vk);
           },
           child: Padding(
@@ -779,7 +1053,7 @@ class _EditPanel extends StatelessWidget {
               avatar: const Icon(Icons.add_rounded, size: 16),
               label: const Text('添加键'),
               onPressed: () async {
-                final vk = await pickVirtualKeyDialog(context);
+                final vk = await listenVirtualKeyDialog(context);
                 if (vk == null) return;
                 final codes = List.of(b.vkCodes)..add(vk);
                 final exts = List.of(b.extendeds);
@@ -849,4 +1123,92 @@ Future<int?> pickVirtualKeyDialog(BuildContext context) {
       ],
     ),
   );
+}
+
+/// 键位监听对话框：打开后直接按下键盘任意键即捕获为该动作的键位
+/// （10ms 轮询 GetAsyncKeyState，与录制器同源、天然输出 Windows VK）。
+/// Esc 取消；「从列表选择」保留 pickVirtualKeyDialog 作为备选入口。
+Future<int?> listenVirtualKeyDialog(BuildContext context) {
+  return showDialog<int>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => const _KeyListenDialog(),
+  );
+}
+
+class _KeyListenDialog extends StatefulWidget {
+  const _KeyListenDialog();
+
+  @override
+  State<_KeyListenDialog> createState() => _KeyListenDialogState();
+}
+
+class _KeyListenDialogState extends State<_KeyListenDialog> {
+  Timer? _timer;
+  final Set<int> _initialDown = {}; // 打开瞬间已按下的键（不报告，防误触）
+
+  @override
+  void initState() {
+    super.initState();
+    for (var vk = 0x08; vk <= 0xFE; vk++) {
+      if (u32.isKeyDown(vk)) _initialDown.add(vk);
+    }
+    _timer = Timer.periodic(
+      const Duration(milliseconds: 10),
+      (_) => _poll(),
+    );
+  }
+
+  void _poll() {
+    // Esc 取消
+    if (u32.isKeyDown(u32.vkEscape) && !_initialDown.contains(u32.vkEscape)) {
+      _finish(null);
+      return;
+    }
+    for (var vk = 0x08; vk <= 0xFE; vk++) {
+      if (vk == u32.vkEscape) continue;
+      if (u32.isKeyDown(vk) && !_initialDown.contains(vk)) {
+        _finish(vk);
+        return;
+      }
+    }
+  }
+
+  void _finish(int? vk) {
+    _timer?.cancel();
+    _timer = null;
+    if (mounted) Navigator.pop(context, vk);
+  }
+
+  Future<void> _pickFromList() async {
+    _timer?.cancel();
+    _timer = null;
+    if (!mounted) return;
+    final vk = await pickVirtualKeyDialog(context);
+    _finish(vk);
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('按键监听中'),
+      content: const Text('请直接按下要设置的按键\n按 Esc 取消'),
+      actions: [
+        TextButton(
+          onPressed: () => _finish(null),
+          child: const Text('取消'),
+        ),
+        OutlinedButton(
+          onPressed: _pickFromList,
+          child: const Text('从列表选择'),
+        ),
+      ],
+    );
+  }
 }
