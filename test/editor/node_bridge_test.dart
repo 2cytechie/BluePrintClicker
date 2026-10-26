@@ -1,7 +1,7 @@
 import 'dart:convert';
 
-import 'package:blueprint_clicker/models/blueprint.dart';
-import 'package:blueprint_clicker/ui/editor/node_bridge.dart';
+import 'package:bluedot_clicker/models/blueprint.dart';
+import 'package:bluedot_clicker/ui/editor/node_bridge.dart';
 import 'package:fl_nodes_v2/fl_nodes_v2.dart' as fl;
 import 'package:flutter_test/flutter_test.dart';
 

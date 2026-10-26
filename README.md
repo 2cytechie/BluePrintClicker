@@ -1,6 +1,6 @@
-# blueprint_clicker
+# 蓝点器 (BlueDot Clicker)
 
-A new Flutter project.
+Windows 自动化工具：基于蓝图工作流的连点器。
 
 ## Getting Started
 

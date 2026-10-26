@@ -5,14 +5,34 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/blueprint.dart';
 
+/// 应用文档目录下的数据根目录（脚本、录制、数据存取共用）
+const _appDirName = 'bluedot_clicker';
+
+/// 旧版本使用的数据目录名，首次启动时自动迁移到 [_appDirName]
+const _legacyAppDirName = 'blueprint_clicker';
+
+Future<Directory> _appDataDir() async {
+  final doc = await getApplicationDocumentsDirectory();
+  final d = Directory('${doc.path}/$_appDirName');
+  final legacy = Directory('${doc.path}/$_legacyAppDirName');
+  if (!await d.exists() && await legacy.exists()) {
+    try {
+      await legacy.rename(d.path);
+    } catch (_) {
+      // 迁移失败时保留旧目录，后续在新目录重新开始
+    }
+  }
+  return d;
+}
+
 /// 脚本 JSON 文件存储：应用文档目录/scripts/<名称>.bpc.json
 class ScriptStorage {
   Directory? _dir;
 
   Future<Directory> get dir async {
     if (_dir != null) return _dir!;
-    final doc = await getApplicationDocumentsDirectory();
-    final d = Directory('${doc.path}/blueprint_clicker/scripts');
+    final base = await _appDataDir();
+    final d = Directory('${base.path}/scripts');
     if (!await d.exists()) await d.create(recursive: true);
     _dir = d;
     return d;
@@ -97,8 +117,8 @@ class RecordingStorage {
 
   Future<Directory> get dir async {
     if (_dir != null) return _dir!;
-    final doc = await getApplicationDocumentsDirectory();
-    final d = Directory('${doc.path}/blueprint_clicker/recordings');
+    final base = await _appDataDir();
+    final d = Directory('${base.path}/recordings');
     if (!await d.exists()) await d.create(recursive: true);
     _dir = d;
     return d;
@@ -178,8 +198,8 @@ class DataStore {
       return f;
     }
     if (_file != null) return _file!;
-    final doc = await getApplicationDocumentsDirectory();
-    final f = File('${doc.path}/blueprint_clicker/data_store.json');
+    final base = await _appDataDir();
+    final f = File('${base.path}/data_store.json');
     if (!await f.exists()) await f.create(recursive: true);
     _file = f;
     return f;

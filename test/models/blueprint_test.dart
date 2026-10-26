@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:blueprint_clicker/models/blueprint.dart';
+import 'package:bluedot_clicker/models/blueprint.dart';
 
 void main() {
   group('蓝图序列化往返', () {

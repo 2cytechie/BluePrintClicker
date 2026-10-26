@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:blueprint_clicker/services/opencv_matcher.dart';
-import 'package:blueprint_clicker/services/recognition.dart';
+import 'package:bluedot_clicker/services/opencv_matcher.dart';
+import 'package:bluedot_clicker/services/recognition.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void _fillRect(Uint8List img, int imgW, int x, int y, int w, int h, int b, int g, int r) {

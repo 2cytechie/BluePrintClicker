@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:blueprint_clicker/services/recognition.dart';
-import 'package:blueprint_clicker/services/template_match_dart.dart';
+import 'package:bluedot_clicker/services/recognition.dart';
+import 'package:bluedot_clicker/services/template_match_dart.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// 在 BGRA 图像上画一个实心矩形

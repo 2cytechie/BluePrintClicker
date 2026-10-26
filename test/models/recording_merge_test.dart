@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:blueprint_clicker/models/blueprint.dart';
+import 'package:bluedot_clicker/models/blueprint.dart';
 
 void main() {
   group('mergeKeyCombos 组合键合并', () {

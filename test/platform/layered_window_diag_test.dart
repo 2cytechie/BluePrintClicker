@@ -3,8 +3,8 @@ import 'dart:ffi';
 import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:blueprint_clicker/platform/win32/gdi32.dart' as gdi;
-import 'package:blueprint_clicker/platform/win32/user32.dart' as u32;
+import 'package:bluedot_clicker/platform/win32/gdi32.dart' as gdi;
+import 'package:bluedot_clicker/platform/win32/user32.dart' as u32;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

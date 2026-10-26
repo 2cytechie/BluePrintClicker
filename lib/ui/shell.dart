@@ -61,7 +61,7 @@ class _SideNav extends ConsumerWidget {
           ),
           const SizedBox(height: 6),
           const Text(
-            '蓝图连点器',
+            '蓝点器',
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w600,

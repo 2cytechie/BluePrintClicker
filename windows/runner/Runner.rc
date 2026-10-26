@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.blueprint" "\0"
-            VALUE "FileDescription", "blueprint_clicker" "\0"
+            VALUE "CompanyName", "BlueDot" "\0"
+            VALUE "FileDescription", "蓝点器 (BlueDot Clicker)" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "blueprint_clicker" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.blueprint. All rights reserved." "\0"
-            VALUE "OriginalFilename", "blueprint_clicker.exe" "\0"
-            VALUE "ProductName", "blueprint_clicker" "\0"
+            VALUE "InternalName", "bluedot_clicker" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 BlueDot. All rights reserved." "\0"
+            VALUE "OriginalFilename", "bluedot_clicker.exe" "\0"
+            VALUE "ProductName", "蓝点器" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

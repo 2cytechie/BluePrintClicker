@@ -28,7 +28,7 @@ class HomePage extends ConsumerWidget {
               children: [
                 // 标题区
                 const PageHeader(
-                  title: '蓝图连点器',
+                  title: '蓝点器',
                   subtitle: 'Windows 自动化 · 蓝图工作流',
                 ),
                 // 平台不支持提示

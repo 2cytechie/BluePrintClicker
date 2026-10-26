@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:blueprint_clicker/app.dart';
+import 'package:bluedot_clicker/app.dart';
 
 void main() {
   testWidgets('应用启动冒烟：首页渲染脚本区域与入口', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: BlueprintApp()));
+    await tester.pumpWidget(const ProviderScope(child: BlueDotApp()));
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 300));
 
@@ -17,7 +17,7 @@ void main() {
   });
 
   testWidgets('录制回放页可打开且控件渲染', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: BlueprintApp()));
+    await tester.pumpWidget(const ProviderScope(child: BlueDotApp()));
     await tester.pump(const Duration(milliseconds: 300));
 
     await tester.tap(find.text('录制回放').first);

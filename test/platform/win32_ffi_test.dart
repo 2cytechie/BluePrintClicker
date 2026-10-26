@@ -2,10 +2,10 @@
 /// 仅在 Windows 上运行。
 library;
 
-import 'package:blueprint_clicker/platform/platform_automation.dart';
-import 'package:blueprint_clicker/platform/win32/gdi32.dart' as gdi;
-import 'package:blueprint_clicker/platform/win32/user32.dart' as u32;
-import 'package:blueprint_clicker/platform/windows_automation.dart';
+import 'package:bluedot_clicker/platform/platform_automation.dart';
+import 'package:bluedot_clicker/platform/win32/gdi32.dart' as gdi;
+import 'package:bluedot_clicker/platform/win32/user32.dart' as u32;
+import 'package:bluedot_clicker/platform/windows_automation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

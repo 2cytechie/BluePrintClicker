@@ -1,12 +1,12 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:blueprint_clicker/engine/interpreter.dart';
-import 'package:blueprint_clicker/engine/variables.dart';
-import 'package:blueprint_clicker/models/blueprint.dart';
-import 'package:blueprint_clicker/platform/platform_automation.dart';
-import 'package:blueprint_clicker/services/recognition.dart';
-import 'package:blueprint_clicker/services/script_storage.dart' show DataStore;
+import 'package:bluedot_clicker/engine/interpreter.dart';
+import 'package:bluedot_clicker/engine/variables.dart';
+import 'package:bluedot_clicker/models/blueprint.dart';
+import 'package:bluedot_clicker/platform/platform_automation.dart';
+import 'package:bluedot_clicker/services/recognition.dart';
+import 'package:bluedot_clicker/services/script_storage.dart' show DataStore;
 import 'package:flutter_test/flutter_test.dart';
 
 // ---- 测试替身 ----

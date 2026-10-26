@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
-import 'package:blueprint_clicker/models/blueprint.dart';
-import 'package:blueprint_clicker/platform/platform_automation.dart';
-import 'package:blueprint_clicker/platform/recording.dart' show replayActions;
+import 'package:bluedot_clicker/models/blueprint.dart';
+import 'package:bluedot_clicker/platform/platform_automation.dart';
+import 'package:bluedot_clicker/platform/recording.dart' show replayActions;
 import 'package:flutter_test/flutter_test.dart';
 
 /// 只记录键事件的测试替身（其余动作不实现/不使用）

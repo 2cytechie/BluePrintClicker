@@ -1,10 +1,10 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
-project(blueprint_clicker LANGUAGES CXX)
+project(bluedot_clicker LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
-set(BINARY_NAME "blueprint_clicker")
+set(BINARY_NAME "bluedot_clicker")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
@@ -65,6 +65,8 @@ if(TARGET winrt_ocr_flutter_plugin)
 endif()
 if(TARGET ${BINARY_NAME})
   target_compile_options(${BINARY_NAME} PRIVATE /wd4819)
+  # 源码为不带 BOM 的 UTF-8，显式指定编码，避免 MSVC 按系统代码页(936)解析导致中文窗口标题乱码
+  target_compile_options(${BINARY_NAME} PRIVATE /utf-8)
 endif()
 
 

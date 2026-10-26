@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
-import 'package:blueprint_clicker/platform/platform_automation.dart';
-import 'package:blueprint_clicker/services/media_tester.dart';
-import 'package:blueprint_clicker/services/recognition.dart';
+import 'package:bluedot_clicker/platform/platform_automation.dart';
+import 'package:bluedot_clicker/services/media_tester.dart';
+import 'package:bluedot_clicker/services/recognition.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // ---- 测试替身 ----
