@@ -20,6 +20,7 @@ const int mouseeventfHwheel = 0x1000;
 const int mouseeventfAbsolutemove = 0x8000;
 const int keyeventfExtendedkey = 0x0001;
 const int keyeventfKeyup = 0x0002;
+const int mapvkVkToVsc = 0; // MapVirtualKey: VK → 扫描码
 const int smCxscreen = 0;
 const int smCyscreen = 1;
 const int vkLbutton = 0x01;
@@ -134,6 +135,12 @@ typedef _GetAsyncKeyStateC = Int16 Function(Int32 vKey);
 typedef _GetAsyncKeyStateDart = int Function(int vKey);
 final _getAsyncKeyState = user32Lib.lookupFunction<_GetAsyncKeyStateC, _GetAsyncKeyStateDart>('GetAsyncKeyState');
 
+// VK → 扫描码转换（当前键盘布局；注入按键时填充 wScan 用）
+typedef _MapVirtualKeyWC = Uint32 Function(Uint32 uCode, Uint32 uMapType);
+typedef _MapVirtualKeyWDart = int Function(int uCode, int uMapType);
+final _mapVirtualKeyW =
+    user32Lib.lookupFunction<_MapVirtualKeyWC, _MapVirtualKeyWDart>('MapVirtualKeyW');
+
 int screenW() => _getSystemMetrics(smCxscreen);
 int screenH() => _getSystemMetrics(smCyscreen);
 
@@ -215,7 +222,10 @@ void _sendKey(int vk, int flags) {
   final inp = p.ref;
   inp.type = inputKeyboard;
   inp.u.ki.wVk = vk;
-  inp.u.ki.wScan = 0;
+  // 扫描码必填（AutoHotkey 同款做法）：SDL2/DirectInput/RAW Input 类目标按
+  // lParam/RawInput 里的扫描码识别按键，wScan=0 时这些引擎完全收不到
+  // 字母/数字/Enter 等键（方向键恰好有 VK 兜底所以能生效）。
+  inp.u.ki.wScan = _mapVirtualKeyW(vk, mapvkVkToVsc);
   inp.u.ki.dwFlags = flags;
   inp.u.ki.time = 0;
   inp.u.ki.dwExtraInfo = nullptr;
